@@ -1,0 +1,13 @@
+# 复制为 .dev.vars 后填写（.dev.vars 已被 gitignore，勿提交真实密钥）
+# 生产环境用 wrangler secret put <KEY> 逐个配置
+
+AUTH_TOKENS=change-me-token-1,change-me-token-2
+
+# chat 供应商（每个 provider 文件声明自己读哪个变量）
+OPENROUTER_API_KEY=
+DEEPSEEK_API_KEY=
+
+# read 供应商
+JINA_API_KEY=
+TAVILY_API_KEY=
+FIRECRAWL_API_KEY=

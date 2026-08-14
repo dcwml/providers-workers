@@ -4,3 +4,7 @@ logs/
 
 *.log
 .env.vars
+.superpowers/
+.dev.vars
+.wrangler/
+dist/
