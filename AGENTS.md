@@ -1,0 +1,79 @@
+# AGENTS.md - Providers 项目工作手册
+
+多供应商聚合网关：Cloudflare Workers 上的 OpenAI 兼容 chat 接口 + 页面读取接口，内置重试与供应商自动降级。本文件是修改本项目代码时必须遵守的约定。
+
+## 常用命令
+
+```bash
+npm test            # vitest 全量（上游 HTTP 全部 mock，无真实网络）
+npm run typecheck   # tsc --noEmit，必须干净
+npm run dev         # wrangler dev 本地联调（需先配 .dev.vars）
+npm run deploy      # 发布前建议先 npx wrangler deploy --dry-run
+```
+
+改动后最低验收：`npm run typecheck && npm test` 全绿。
+
+## 技术栈与运行环境
+
+- 仅 Cloudflare Workers（**不考虑 Node.js 兼容**），原生 fetch handler，无框架、无运行时依赖。
+- TypeScript strict + `noUncheckedIndexedAccess` + `verbatimModuleSyntax`；新代码保持同等严格度，不得用 `any` 绕过。
+- Worker 运行时限制要注意：无 Node API（如 `crypto.timingSafeEqual` 不可用，现有 SHA-256+XOR 常量时间比较是刻意选择，勿"改回"）。
+
+## 目录结构
+
+```
+src/
+  index.ts        # 入口：路由 + 鉴权守卫 + 错误矩阵（401/400/404/502）
+  auth.ts         # Bearer 鉴权（AUTH_TOKENS 逗号分隔，常量时间比较）
+  config.ts       # UPSTREAM_TIMEOUT_MS=30s、DEFAULT_RETRY={3次,1s}
+  env.ts          # Env 类型（AUTH_TOKENS 必填，供应商 key 可选）
+  errors.ts       # RetryableError/NonRetryableError/classifyHttpStatus/classifyNetworkError
+  retry.ts        # withRetry：仅重试 RetryableError
+  log.ts          # logAttempt：结构化尝试日志
+  chat/           # types / sanitize（能力裁剪）/ chains（model→链）/ runner / providers/
+  read/           # types / runner（固定链）/ providers/（jina、tavily、firecrawl）
+```
+
+## 核心约定
+
+### 供应商实现
+
+- **每家供应商一个自包含文件**（`src/chat/providers/*.ts`、`src/read/providers/*.ts`）：写死 BASE_URL、上游 model、ENV_KEY，自带失败分类逻辑。这是明确的架构选择，**不要抽公共适配器、不要消除供应商间的重复**。
+- chat 供应商发送请求前：先 `sanitizeRequest` 按 capabilities 裁剪（不支持的参数直接删；`json_schema` 不支持时降级 `json_object`；system 消息并入首条 user 消息），再把 `body.model` 改写为自家上游 model。
+- **响应一律原样透传**：不改上游 JSON 的任何字段（包括 model）。
+- 失败分类统一口径：缺 API key → `NonRetryableError`；fetch 抛错 → `classifyNetworkError`；非 2xx → `classifyHttpStatus`（5xx/429 可重试，其它 4xx 不可重试但仍换下家）；响应非 JSON → `RetryableError`；提取内容为空 → `NonRetryableError`。
+- 每次上游尝试必须有独立 `AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)`（在重试闭包内新建，勿复用）。
+
+### 供应商链
+
+- chat：`src/chat/chains.ts` 按逻辑 model 写死链，数组顺序即降级顺序。当前 `sample-chat`/`sample-reasoning` 为**示例占位**，替换真实供应商时只改这里和 providers/。
+- read：`src/read/runner.ts` 的 `READ_CHAIN` 固定 jina → tavily → firecrawl，勿改顺序除非明确要求。
+
+### 错误与重试
+
+- 单家：最多 3 次请求（重试 2 次），间隔 1s（`DEFAULT_RETRY`）；runner 层逐家串行，第一家成功即返回，全链失败 → 502 附各家 `ProviderError` 明细。
+- chat 错误体为 OpenAI 风格 `{error:{message,type,code,provider_errors?}}`；read 为简化形 `{error:{message,provider_errors?}}`。勿混用。
+- 请求体防御：入口解析后访问属性前先做 `?? {}` 守卫（合法 JSON `null` 体会解析成功）。
+
+## 密钥与环境变量
+
+- 本地：`.dev.vars`（已 gitignore，**严禁提交真实密钥**），模板见 `.dev.vars.example`。
+- 生产：`wrangler secret put <KEY>`。
+- 供应商 key 一律可选：缺 key 的供应商按 `NonRetryableError` 快速跳过换下家，不要改成启动时报错。
+
+## 测试约定
+
+- vitest，上游 fetch 全部 mock（`vi.stubGlobal`/`vi.mock`），**测试中不得出现真实网络调用**。
+- 测试断言真实行为（请求 URL/header/body、状态码、响应体），不要只断言 mock 被调用。
+- 新增供应商：覆盖缺 key、网络错、可重试/不可重试状态码、非 JSON、空内容、成功提取这几条路径。
+
+## 新增一个 chat 供应商（checklist）
+
+1. `src/chat/providers/` 新建文件，仿照 `openrouter.ts`（自包含：BASE_URL/UPSTREAM_MODEL/ENV_KEY/capabilities/chat）。
+2. `src/chat/chains.ts` 相应链中按降级顺序插入。
+3. `.dev.vars.example` 与生产 secret 补 key；`README.md` 配置表补一行。
+4. 测试按上节约定补齐；`npm run typecheck && npm test` 全绿后提交。
+
+## 已知边界（fix-later，勿在无关改动中顺手重构）
+
+见 `docs/superpowers/reports/2026-08-14-providers-gateway-completion.md`：retry.ts 循环后死代码、供应商 `res.text()` 中断未按网络错归类、部分错误路径测试缺口、日志格式与规格的表述差异（行为一致）。改动涉及这些文件时保持现状语义，除非任务明确要求修复。
