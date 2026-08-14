@@ -13,6 +13,7 @@ npm run dev          # wrangler dev 本地启动（密钥放 .dev.vars）
 npm test             # vitest 全量单测（上游全部 mock）
 npm run typecheck    # tsc --noEmit
 npx vitest run test/chat/runner.test.ts   # 运行单个测试文件
+npm run probe -- openrouter   # 实测某 chat provider 的四项能力（发真实请求）
 npm run deploy       # wrangler deploy（发布前建议先 wrangler deploy --dry-run）
 ```
 
@@ -35,7 +36,8 @@ npm run deploy       # wrangler deploy（发布前建议先 wrangler deploy --dr
 
 1. `src/chat/providers/` 新建文件仿照 `openrouter.ts`；
 2. 在 `src/chat/chains.ts` 的 `CHAINS` 中为相应逻辑 model 插入（顺序即降级顺序）；
-3. `src/env.ts`、`.dev.vars.example` 补上对应 key（生产用 `wrangler secret put`）。
+3. `src/env.ts`、`.dev.vars.example` 补上对应 key（生产用 `wrangler secret put`）；
+4. 运行 `npm run probe -- <providerId>`（逻辑：`src/chat/probe.ts`，临时把 capabilities 置全 true 绕过 sanitize，对上游发 4 个最小请求），按输出的建议配置改准 `capabilities`。
 
 ## 测试约定
 
