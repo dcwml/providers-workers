@@ -103,7 +103,7 @@ interface ChatProvider {
 
 文件内**写死**自己的 base url 和上游 model 名，api key 从 `env` 读取。
 
-Provider 职责：调用 `sanitize.ts` 按能力裁剪请求 → fetch 上游 → 非 2xx 抛分类错误 → 解析响应。
+Provider 职责：调用 `sanitize.ts` 按能力裁剪请求 → 将请求中的 `model` 字段改写为本文件写死的上游 model 名（因为上游 model 是供应商私有的，与调用方传入的逻辑 model 不同）→ fetch 上游 → 非 2xx 抛分类错误 → 解析响应。
 
 ### 请求裁剪规则
 
