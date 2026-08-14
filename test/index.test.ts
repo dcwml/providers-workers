@@ -92,6 +92,16 @@ describe("chat endpoint", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects a valid JSON null body with 400", async () => {
+    const req = new Request("https://gw.example/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: "Bearer sekret" },
+      body: "null",
+    });
+    const res = await handler.fetch(req, env);
+    expect(res.status).toBe(400);
+  });
+
   it("rejects missing model with 400", async () => {
     const res = await handler.fetch(
       post("/v1/chat/completions", { messages: [{ role: "user", content: "hi" }] }),
@@ -153,6 +163,11 @@ describe("read endpoint", () => {
 
   it("rejects missing url with 400", async () => {
     const res = await handler.fetch(post("/v1/read", {}), env);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a valid JSON null body with 400", async () => {
+    const res = await handler.fetch(post("/v1/read", null), env);
     expect(res.status).toBe(400);
   });
 

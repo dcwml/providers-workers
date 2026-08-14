@@ -35,4 +35,12 @@ describe("isAuthorized", () => {
   it("rejects when token list is empty", async () => {
     expect(await isAuthorized(makeRequest("Bearer x"), " , ")).toBe(false);
   });
+
+  it("rejects when token list is an empty string (unset secret)", async () => {
+    expect(await isAuthorized(makeRequest("Bearer secret-1"), "")).toBe(false);
+  });
+
+  it("rejects when token list is undefined (unset secret at runtime)", async () => {
+    expect(await isAuthorized(makeRequest("Bearer secret-1"), undefined as unknown as string)).toBe(false);
+  });
 });

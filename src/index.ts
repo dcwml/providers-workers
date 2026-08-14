@@ -29,7 +29,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     });
   }
 
-  const req = body as Partial<ChatRequest>;
+  const req = (body ?? {}) as Partial<ChatRequest>;
   if (typeof req.model !== "string" || req.model.length === 0) {
     return json(400, {
       error: { message: "model is required", type: "invalid_request_error", code: "missing_model" },
@@ -80,7 +80,7 @@ async function handleRead(request: Request, env: Env): Promise<Response> {
     return json(400, { error: { message: "invalid JSON body" } });
   }
 
-  const target = (body as { url?: unknown }).url;
+  const target = ((body ?? {}) as { url?: unknown }).url;
   if (typeof target !== "string" || !/^https?:\/\//i.test(target)) {
     return json(400, { error: { message: "url must be an http(s) URL" } });
   }

@@ -14,6 +14,7 @@ async function constantTimeEquals(a: string, b: string): Promise<boolean> {
 }
 
 export async function isAuthorized(request: Request, tokensCsv: string): Promise<boolean> {
+  if (!tokensCsv) return false;
   const header = request.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
   if (!match || !match[1]) return false;
