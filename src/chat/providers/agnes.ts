@@ -14,7 +14,7 @@ const ENV_KEY = "AGNES_API_KEY";
 
 export const agnes: ChatProvider = {
   id: "agnes",
-  capabilities: { systemPrompt: true, tools: true, jsonObject: true, jsonSchema: false },
+  capabilities: { systemPrompt: true, tools: true, jsonObject: true, jsonSchema: true },
   async chat(req, env, signal) {
     const apiKey = env[ENV_KEY];
     if (!apiKey) throw new NonRetryableError(`${ENV_KEY} is not configured`);
