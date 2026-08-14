@@ -14,6 +14,7 @@ npm test             # vitest 全量单测（上游全部 mock）
 npm run typecheck    # tsc --noEmit
 npx vitest run test/chat/runner.test.ts   # 运行单个测试文件
 npm run probe -- openrouter   # 实测某 chat provider 的四项能力（发真实请求）
+npx tsx scripts/serve.ts      # 备用本地服务：Node 直跑 worker handler，不依赖 wrangler（默认 8787，PORT 可覆盖）
 npm run deploy       # wrangler deploy（发布前建议先 wrangler deploy --dry-run）
 ```
 
