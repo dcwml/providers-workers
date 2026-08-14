@@ -148,7 +148,7 @@ Provider 职责：调用 `sanitize.ts` 按能力裁剪请求 → 将请求中的
 | --- | --- | --- |
 | jina | `GET https://r.jina.ai/{url}`，Bearer key | 响应即 Markdown 文本 |
 | tavily | `POST https://api.tavily.com/extract` | `raw_content` |
-| firecrawl | `POST https://api.firecrawl.dev/v1/scrape`，`formats:["markdown"]` | `data.markdown` |
+| firecrawl | `POST https://api.firecrawl.dev/v2/scrape`，`formats:["markdown"]` | `data.markdown` |
 
 ### 失败判定
 
@@ -200,4 +200,5 @@ Provider 职责：调用 `sanitize.ts` 按能力裁剪请求 → 将请求中的
 ## 九、开放项（实现时确定）
 
 - **首批 chat 供应商清单**：具体逻辑 model 名、每个 model 的供应商顺序、各家 base url 与上游 model 名，实现时填入 `chains.ts` 与 `providers/`。
-- **read 上游 API 细节核对**：tavily `extract` 与 firecrawl `scrape` 的具体请求/响应字段，实现时以官方最新文档为准。
+
+> 注：read 三家上游 API 细节已于 2026-08-14 核实（tavily：Bearer 鉴权、`results[].raw_content`；firecrawl：v2 scrape、`data.markdown`；jina：`r.jina.ai` 直出 Markdown），不再是开放项。
