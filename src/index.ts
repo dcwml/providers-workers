@@ -47,15 +47,6 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   }
 
   const outcome = await runChat(req as ChatRequest, env);
-  if (outcome.kind === "model-not-found") {
-    return json(404, {
-      error: {
-        message: `model not found: ${req.model}`,
-        type: "invalid_request_error",
-        code: "model_not_found",
-      },
-    });
-  }
   if (outcome.kind === "all-failed") {
     return json(502, {
       error: {

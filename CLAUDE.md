@@ -18,6 +18,10 @@ npx tsx scripts/serve.ts      # 备用本地服务：Node 直跑 worker handler�
 npm run deploy       # wrangler deploy（发布前建议先 wrangler deploy --dry-run）
 ```
 
+## 部署
+
+提交到 git 并推送到远端后会自动部署到生产（Workers CI），无需手动 `npm run deploy`。
+
 ## 架构
 
 请求流：`src/index.ts` 路由 → auth 校验（`src/auth.ts`，Bearer token 匹配 `AUTH_TOKENS`）→ runner。

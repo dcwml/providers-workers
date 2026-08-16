@@ -34,11 +34,6 @@ describe("runChat", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns 404 outcome for unknown model", async () => {
-    const outcome = await runChat(req, env, fast);
-    expect(outcome).toMatchObject({ kind: "model-not-found", status: 404 });
-  });
-
   it("returns first provider's response on success (pass-through)", async () => {
     const body: ChatResponse = { id: "x", choices: [] };
     state.chains.m1 = [provider("p1", async () => body)];

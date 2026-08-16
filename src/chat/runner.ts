@@ -7,7 +7,7 @@ import { getChain } from "./chains";
 import type { ChatRequest } from "./types";
 
 export interface ChatOutcome {
-  kind: "model-not-found" | "ok" | "all-failed";
+  kind: "ok" | "all-failed";
   status: number;
   body?: unknown;
   errors?: ProviderError[];
@@ -19,9 +19,6 @@ export async function runChat(
   retryOverrides?: Partial<RetryOptions>,
 ): Promise<ChatOutcome> {
   const chain = getChain(req.model);
-  if (!chain || chain.length === 0) {
-    return { kind: "model-not-found", status: 404 };
-  }
 
   const errors: ProviderError[] = [];
   for (const provider of chain) {
