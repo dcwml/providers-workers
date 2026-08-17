@@ -1,0 +1,13 @@
+import { describe, expect, it } from "vitest";
+import { CHAINS, FALLBACK_CHAIN, getChain } from "../../src/chat/chains";
+
+describe("getChain", () => {
+  it("returns the configured chain for a known model", () => {
+    expect(getChain("agnes-2.0-flash")).toBe(CHAINS["agnes-2.0-flash"]);
+  });
+
+  it("falls back to the agnes chain for unknown models", () => {
+    expect(getChain("whatever")).toBe(FALLBACK_CHAIN);
+    expect(FALLBACK_CHAIN.map((p) => p.id)).toEqual(["agnes"]);
+  });
+});

@@ -122,15 +122,6 @@ describe("chat endpoint", () => {
     expect(res.status).toBe(400);
   });
 
-  it("maps model-not-found outcome to 404", async () => {
-    state.chatOutcome = { kind: "model-not-found", status: 404 };
-    const res = await handler.fetch(
-      post("/v1/chat/completions", { model: "nope", messages: [{ role: "user", content: "hi" }] }),
-      env,
-    );
-    expect(res.status).toBe(404);
-  });
-
   it("maps all-failed outcome to 502", async () => {
     state.chatOutcome = {
       kind: "all-failed",

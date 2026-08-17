@@ -8,3 +8,4 @@ logs/
 .dev.vars
 .wrangler/
 dist/
+CLAUDE.local.md

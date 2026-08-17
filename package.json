@@ -4,13 +4,16 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "login": "wrangler login",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "probe": "tsx scripts/probe.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260811.1",
+    "tsx": "^4.23.12",
     "typescript": "^5.6.0",
     "vitest": "^3.2.0",
     "wrangler": "^4.0.0"
