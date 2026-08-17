@@ -92,4 +92,34 @@ describe("runChat", () => {
     await runChat(req, env, fast);
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[chat] provider=p1"));
   });
+
+  describe("provider override (only)", () => {
+    it("runs only the specified provider, ignoring the model chain", async () => {
+      const calls: string[] = [];
+      state.chains.m1 = [
+        provider("p1", async () => {
+          calls.push("p1");
+          return { id: "p1" };
+        }),
+      ];
+      const p2 = provider("p2", async () => {
+        calls.push("p2");
+        return { id: "p2" };
+      });
+      const outcome = await runChat(req, env, fast, p2);
+      expect(outcome).toMatchObject({ kind: "ok", status: 200, body: { id: "p2" } });
+      expect(calls).toEqual(["p2"]);
+    });
+
+    it("does not fall back when the only provider fails", async () => {
+      state.chains.m1 = [provider("p2", async () => ({ id: "p2" }))];
+      const p1 = provider("p1", async () => {
+        throw new NonRetryableError("p1 refused");
+      });
+      const outcome = await runChat(req, env, fast, p1);
+      expect(outcome.kind).toBe("all-failed");
+      expect(outcome.status).toBe(502);
+      expect(outcome.errors).toEqual([{ provider: "p1", message: "p1 refused" }]);
+    });
+  });
 });

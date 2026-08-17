@@ -6,13 +6,24 @@ import type { Env } from "../src/env";
 const state = vi.hoisted(() => ({
   chatOutcome: undefined as unknown as ChatOutcome,
   readOutcome: undefined as unknown as ReadOutcome,
+  chatOnly: undefined as unknown,
+  readOnly: undefined as unknown,
 }));
 
 vi.mock("../src/chat/runner", () => ({
-  runChat: async () => state.chatOutcome,
+  runChat: async (_req: unknown, _env: unknown, _retry: unknown, only: unknown) => {
+    state.chatOnly = only;
+    return state.chatOutcome;
+  },
 }));
 vi.mock("../src/read/runner", () => ({
-  runRead: async () => state.readOutcome,
+  runRead: async (_url: unknown, _env: unknown, _retry: unknown, only: unknown) => {
+    state.readOnly = only;
+    return state.readOutcome;
+  },
+  getReaderProviderById: (id: string) =>
+    id === "jina" || id === "tavily" || id === "firecrawl" ? { id } : undefined,
+  READER_PROVIDER_IDS: ["jina", "tavily", "firecrawl"],
 }));
 
 import handler from "../src/index";
@@ -32,6 +43,8 @@ function post(path: string, body: unknown, token?: string): Request {
 beforeEach(() => {
   state.chatOutcome = { kind: "ok", status: 200, body: { id: "default" } };
   state.readOutcome = { kind: "ok", status: 200, markdown: "# default" };
+  state.chatOnly = undefined;
+  state.readOnly = undefined;
 });
 
 describe("auth", () => {
@@ -170,5 +183,59 @@ describe("read endpoint", () => {
     };
     const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env);
     expect(res.status).toBe(502);
+  });
+});
+
+describe("provider override (?provider=)", () => {
+  it("read: resolves provider and passes it to runRead", async () => {
+    const res = await handler.fetch(
+      post("/v1/read?provider=firecrawl", { url: "https://example.com" }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    expect(state.readOnly).toEqual({ id: "firecrawl" });
+  });
+
+  it("read: no provider param leaves override undefined", async () => {
+    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env);
+    expect(res.status).toBe(200);
+    expect(state.readOnly).toBeUndefined();
+  });
+
+  it("read: rejects unknown provider with 400", async () => {
+    const res = await handler.fetch(
+      post("/v1/read?provider=bogus", { url: "https://example.com" }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("unknown provider: bogus");
+    expect(body.error.message).toContain("jina, tavily, firecrawl");
+  });
+
+  it("chat: resolves provider and passes it to runChat", async () => {
+    const res = await handler.fetch(
+      post("/v1/chat/completions?provider=openrouter", {
+        model: "sample-chat",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    expect((state.chatOnly as { id: string }).id).toBe("openrouter");
+  });
+
+  it("chat: rejects unknown provider with 400 and unknown_provider code", async () => {
+    const res = await handler.fetch(
+      post("/v1/chat/completions?provider=bogus", {
+        model: "sample-chat",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("unknown_provider");
+    expect(body.error.message).toContain("unknown provider: bogus");
   });
 });

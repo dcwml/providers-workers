@@ -11,6 +11,12 @@ import type { ReaderProvider } from "./types";
 /** 供应商降级顺序，写死：jina → tavily → firecrawl */
 export const READ_CHAIN: readonly ReaderProvider[] = [jina, tavily, firecrawl];
 
+export const READER_PROVIDER_IDS: readonly string[] = READ_CHAIN.map((p) => p.id);
+
+export function getReaderProviderById(id: string): ReaderProvider | undefined {
+  return READ_CHAIN.find((p) => p.id === id);
+}
+
 export interface ReadOutcome {
   kind: "ok" | "all-failed";
   status: number;
@@ -22,10 +28,13 @@ export async function runRead(
   url: string,
   env: Env,
   retryOverrides?: Partial<RetryOptions>,
+  only?: ReaderProvider,
 ): Promise<ReadOutcome> {
+  // ?provider= 覆盖：隔离只跑指定单家，不降级；缺省走固定链。
+  const chain: readonly ReaderProvider[] = only ? [only] : READ_CHAIN;
   const errors: ProviderError[] = [];
 
-  for (const provider of READ_CHAIN) {
+  for (const provider of chain) {
     try {
       const result = await withRetry(
         async () => {

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runRead } from "../../src/read/runner";
 import { NonRetryableError, RetryableError } from "../../src/errors";
 import type { Env } from "../../src/env";
+import { firecrawl } from "../../src/read/providers/firecrawl";
+import { jina } from "../../src/read/providers/jina";
 
 // runner 在模块加载时构建 READ_CHAIN，因此 mock 的 provider 用「委托 state」模式：
 // 对象身份固定，行为在测试里通过 state 切换。
@@ -94,5 +96,39 @@ describe("runRead", () => {
   it("logs each attempt with read feature tag", async () => {
     await runRead("https://example.com", env, fast);
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[read] provider=jina"));
+  });
+
+  describe("provider override (only)", () => {
+    it("runs only the specified provider even if an earlier one would succeed", async () => {
+      const calls: string[] = [];
+      state.jinaImpl = async () => {
+        calls.push("jina");
+        return { markdown: "jina" };
+      };
+      state.firecrawlImpl = async () => {
+        calls.push("firecrawl");
+        return { markdown: "fc" };
+      };
+      const outcome = await runRead("https://example.com", env, fast, firecrawl);
+      expect(outcome).toMatchObject({ kind: "ok", markdown: "fc" });
+      expect(calls).toEqual(["firecrawl"]);
+    });
+
+    it("does not fall back when the only provider fails", async () => {
+      const calls: string[] = [];
+      state.jinaImpl = async () => {
+        calls.push("jina");
+        throw new NonRetryableError("jina empty");
+      };
+      state.tavilyImpl = async () => {
+        calls.push("tavily");
+        return { markdown: "tavily" };
+      };
+      const outcome = await runRead("https://example.com", env, fast, jina);
+      expect(outcome.kind).toBe("all-failed");
+      expect(outcome.status).toBe(502);
+      expect(outcome.errors).toEqual([{ provider: "jina", message: "jina empty" }]);
+      expect(calls).toEqual(["jina"]);
+    });
   });
 });

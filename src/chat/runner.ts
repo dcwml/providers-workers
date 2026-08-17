@@ -4,7 +4,7 @@ import type { Env } from "../env";
 import { logAttempt } from "../log";
 import { withRetry, type RetryOptions } from "../retry";
 import { getChain } from "./chains";
-import type { ChatRequest } from "./types";
+import type { ChatProvider, ChatRequest } from "./types";
 
 export interface ChatOutcome {
   kind: "ok" | "all-failed";
@@ -17,8 +17,10 @@ export async function runChat(
   req: ChatRequest,
   env: Env,
   retryOverrides?: Partial<RetryOptions>,
+  only?: ChatProvider,
 ): Promise<ChatOutcome> {
-  const chain = getChain(req.model);
+  // ?provider= 覆盖：隔离只跑指定单家，不降级；缺省走 model 对应的链。
+  const chain: readonly ChatProvider[] = only ? [only] : getChain(req.model);
 
   const errors: ProviderError[] = [];
   for (const provider of chain) {
