@@ -1,7 +1,7 @@
 import type { AttemptInfo } from "./retry";
 
 export function logAttempt(
-  feature: "chat" | "read",
+  feature: "chat" | "read" | "embeddings",
   provider: string,
   info: AttemptInfo,
 ): void {

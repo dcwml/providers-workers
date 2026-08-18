@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatOutcome } from "../src/chat/runner";
+import type { EmbeddingsOutcome } from "../src/embeddings/runner";
 import type { ReadOutcome } from "../src/read/runner";
 import type { Env } from "../src/env";
 
 const state = vi.hoisted(() => ({
   chatOutcome: undefined as unknown as ChatOutcome,
   readOutcome: undefined as unknown as ReadOutcome,
+  embeddingsOutcome: undefined as unknown as EmbeddingsOutcome,
   chatOnly: undefined as unknown,
   readOnly: undefined as unknown,
+  embeddingsProvider: undefined as unknown,
 }));
 
 vi.mock("../src/chat/runner", () => ({
@@ -24,6 +27,12 @@ vi.mock("../src/read/runner", () => ({
   getReaderProviderById: (id: string) =>
     id === "jina" || id === "tavily" || id === "firecrawl" ? { id } : undefined,
   READER_PROVIDER_IDS: ["jina", "tavily", "firecrawl"],
+}));
+vi.mock("../src/embeddings/runner", () => ({
+  runEmbeddings: async (_req: unknown, _env: unknown, provider: unknown) => {
+    state.embeddingsProvider = provider;
+    return state.embeddingsOutcome;
+  },
 }));
 
 import handler from "../src/index";
@@ -43,8 +52,10 @@ function post(path: string, body: unknown, token?: string): Request {
 beforeEach(() => {
   state.chatOutcome = { kind: "ok", status: 200, body: { id: "default" } };
   state.readOutcome = { kind: "ok", status: 200, markdown: "# default" };
+  state.embeddingsOutcome = { kind: "ok", status: 200, body: { data: [] } };
   state.chatOnly = undefined;
   state.readOnly = undefined;
+  state.embeddingsProvider = undefined;
 });
 
 describe("auth", () => {
@@ -186,6 +197,87 @@ describe("read endpoint", () => {
   });
 });
 
+describe("embeddings endpoint", () => {
+  const validBody = { model: "BAAI/bge-m3", input: "hi" };
+
+  it("passes through the runner body with 200", async () => {
+    state.embeddingsOutcome = {
+      kind: "ok",
+      status: 200,
+      body: { object: "list", data: [{ embedding: [0.1] }] },
+    };
+    const res = await handler.fetch(post("/v1/embeddings", validBody), env);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ object: "list", data: [{ embedding: [0.1] }] });
+  });
+
+  it("rejects invalid JSON with 400", async () => {
+    const req = new Request("https://gw.example/v1/embeddings", {
+      method: "POST",
+      headers: { authorization: "Bearer sekret" },
+      body: "not json",
+    });
+    const res = await handler.fetch(req, env);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a valid JSON null body with 400", async () => {
+    const res = await handler.fetch(post("/v1/embeddings", null), env);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects missing model with 400", async () => {
+    const res = await handler.fetch(post("/v1/embeddings", { input: "hi" }), env);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects missing input with 400", async () => {
+    const res = await handler.fetch(post("/v1/embeddings", { model: "BAAI/bge-m3" }), env);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects empty-string and empty-array input with 400", async () => {
+    const res1 = await handler.fetch(
+      post("/v1/embeddings", { model: "BAAI/bge-m3", input: "" }),
+      env,
+    );
+    expect(res1.status).toBe(400);
+    const res2 = await handler.fetch(
+      post("/v1/embeddings", { model: "BAAI/bge-m3", input: [] }),
+      env,
+    );
+    expect(res2.status).toBe(400);
+  });
+
+  it("rejects unknown model with 400 model_not_found (no fallback)", async () => {
+    const res = await handler.fetch(
+      post("/v1/embeddings", { model: "nope", input: "hi" }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("model_not_found");
+    expect(body.error.message).toContain("model not found: nope");
+    expect(body.error.message).toContain("BAAI/bge-m3");
+  });
+
+  it("maps failed outcome to 502 with provider_errors", async () => {
+    state.embeddingsOutcome = {
+      kind: "failed",
+      status: 502,
+      errors: [{ provider: "siliconflow", message: "dead" }],
+    };
+    const res = await handler.fetch(post("/v1/embeddings", validBody), env);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as {
+      error: { code: string; provider_errors: unknown[] };
+    };
+    expect(body.error.code).toBe("provider_failed");
+    expect(body.error.provider_errors).toEqual([{ provider: "siliconflow", message: "dead" }]);
+  });
+});
+
 describe("provider override (?provider=)", () => {
   it("read: resolves provider and passes it to runRead", async () => {
     const res = await handler.fetch(
@@ -237,5 +329,26 @@ describe("provider override (?provider=)", () => {
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe("unknown_provider");
     expect(body.error.message).toContain("unknown provider: bogus");
+  });
+
+  it("embeddings: resolves provider and passes it to runEmbeddings", async () => {
+    const res = await handler.fetch(
+      post("/v1/embeddings?provider=siliconflow", { model: "BAAI/bge-m3", input: "hi" }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    expect((state.embeddingsProvider as { id: string }).id).toBe("siliconflow");
+  });
+
+  it("embeddings: rejects unknown provider with 400 and unknown_provider code", async () => {
+    const res = await handler.fetch(
+      post("/v1/embeddings?provider=bogus", { model: "BAAI/bge-m3", input: "hi" }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("unknown_provider");
+    expect(body.error.message).toContain("unknown provider: bogus");
+    expect(body.error.message).toContain("siliconflow");
   });
 });

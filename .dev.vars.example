@@ -4,6 +4,7 @@
 AUTH_TOKENS=change-me-token-1,change-me-token-2
 
 # chat 供应商（每个 provider 文件声明自己读哪个变量）
+# 注：SILICONFLOW_API_KEY 同时供 embeddings 供应商使用（上游模型 BAAI/bge-m3）
 OPENROUTER_API_KEY=
 DEEPSEEK_API_KEY=
 AGNES_API_KEY=

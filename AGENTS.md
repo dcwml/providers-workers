@@ -1,6 +1,6 @@
 # AGENTS.md - Providers 项目工作手册
 
-多供应商聚合网关：Cloudflare Workers 上的 OpenAI 兼容 chat 接口 + 页面读取接口，内置重试与供应商自动降级。本文件是修改本项目代码时必须遵守的约定。
+多供应商聚合网关：Cloudflare Workers 上的 OpenAI 兼容 chat 接口 + embeddings 接口 + 页面读取接口，内置重试与供应商自动降级。本文件是修改本项目代码时必须遵守的约定。
 
 ## 常用命令
 
@@ -32,6 +32,7 @@ src/
   retry.ts        # withRetry：仅重试 RetryableError
   log.ts          # logAttempt：结构化尝试日志
   chat/           # types / sanitize（能力裁剪）/ chains（model→链）/ runner / providers/
+  embeddings/     # types / models（model→单 provider，无链）/ runner / providers/
   read/           # types / runner（固定链）/ providers/（jina、tavily、firecrawl）
 ```
 
@@ -39,8 +40,9 @@ src/
 
 ### 供应商实现
 
-- **每家供应商一个自包含文件**（`src/chat/providers/*.ts`、`src/read/providers/*.ts`）：写死 BASE_URL、上游 model、ENV_KEY，自带失败分类逻辑。这是明确的架构选择，**不要抽公共适配器、不要消除供应商间的重复**。
+- **每家供应商一个自包含文件**（`src/chat/providers/*.ts`、`src/read/providers/*.ts`、`src/embeddings/providers/*.ts`）：写死 BASE_URL、上游 model、ENV_KEY，自带失败分类逻辑。这是明确的架构选择，**不要抽公共适配器、不要消除供应商间的重复**。
 - chat 供应商发送请求前：先 `sanitizeRequest` 按 capabilities 裁剪（不支持的参数直接删；`json_schema` 不支持时降级 `json_object`；system 消息并入首条 user 消息），再把 `body.model` 改写为自家上游 model。
+- embeddings 供应商发送请求前：按 OpenAI embeddings 标准字段白名单（input/encoding_format/dimensions/user）裁剪，`body.model` 改写为自家上游固定 model；响应 `data` 为空数组按 `NonRetryableError` 处理。
 - **响应一律原样透传**：不改上游 JSON 的任何字段（包括 model）。
 - 失败分类统一口径：缺 API key → `NonRetryableError`；fetch 抛错 → `classifyNetworkError`；非 2xx → `classifyHttpStatus`（5xx/429 可重试，其它 4xx 不可重试但仍换下家）；响应非 JSON → `RetryableError`；提取内容为空 → `NonRetryableError`。
 - 每次上游尝试必须有独立 `AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)`（在重试闭包内新建，勿复用）。
@@ -49,11 +51,12 @@ src/
 
 - chat：`src/chat/chains.ts` 按逻辑 model 写死链，数组顺序即降级顺序。当前 `sample-chat`/`sample-reasoning` 为**示例占位**，替换真实供应商时只改这里和 providers/。
 - read：`src/read/runner.ts` 的 `READ_CHAIN` 固定 jina → tavily → firecrawl，勿改顺序除非明确要求。
+- embeddings：`src/embeddings/models.ts` 按逻辑 model 写死**单个** provider——无链、无降级，失败即失败；未注册的 model 直接 400（`model_not_found`），不设回落。
 
 ### 错误与重试
 
 - 单家：最多 3 次请求（重试 2 次），间隔 1s（`DEFAULT_RETRY`）；runner 层逐家串行，第一家成功即返回，全链失败 → 502 附各家 `ProviderError` 明细。
-- chat 错误体为 OpenAI 风格 `{error:{message,type,code,provider_errors?}}`；read 为简化形 `{error:{message,provider_errors?}}`。勿混用。
+- chat 错误体为 OpenAI 风格 `{error:{message,type,code,provider_errors?}}`；read 为简化形 `{error:{message,provider_errors?}}`；embeddings 同 chat 的 OpenAI 风格（单家失败 502，code=`provider_failed`）。勿混用。
 - 请求体防御：入口解析后访问属性前先做 `?? {}` 守卫（合法 JSON `null` 体会解析成功）。
 
 ## 密钥与环境变量

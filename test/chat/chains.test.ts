@@ -6,8 +6,8 @@ describe("getChain", () => {
     expect(getChain("agnes-2.0-flash")).toBe(CHAINS["agnes-2.0-flash"]);
   });
 
-  it("maps gpt-5.4-nano to the single gptsapi provider", () => {
-    expect(getChain("gpt-5.4-nano").map((p) => p.id)).toEqual(["gptsapi"]);
+  it("maps gpt-5.4-nano to the gptsapi-first fallback chain", () => {
+    expect(getChain("gpt-5.4-nano").map((p) => p.id)).toEqual(["gptsapi", "agnes", "siliconflow"]);
   });
 
   it("falls back to the agnes chain for unknown models", () => {
