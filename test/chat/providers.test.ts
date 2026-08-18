@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NonRetryableError, RetryableError } from "../../src/errors";
 import { deepseekOfficial } from "../../src/chat/providers/deepseek-official";
 import { openrouter } from "../../src/chat/providers/openrouter";
+import { siliconflow } from "../../src/chat/providers/siliconflow";
 import type { ChatRequest } from "../../src/chat/types";
 import type { Env } from "../../src/env";
 
@@ -84,5 +85,57 @@ describe("openrouter", () => {
     const sent = JSON.parse(String(init.body));
     expect(sent.model).toBe("openai/gpt-4o-mini");
     expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } });
+  });
+});
+
+describe("siliconflow", () => {
+  const env: Env = { AUTH_TOKENS: "", SILICONFLOW_API_KEY: "sf-test" };
+
+  it("sends sanitized body with rewritten model to the siliconflow endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "r3", choices: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const req: ChatRequest = {
+      ...baseReq,
+      response_format: { type: "json_schema", json_schema: { name: "s" } },
+      tools: [{ type: "function" }],
+    };
+
+    const res = await siliconflow.chat(req, env, signal);
+
+    expect(res).toEqual({ id: "r3", choices: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.siliconflow.cn/v1/chat/completions");
+    const sent = JSON.parse(String(init.body));
+    expect(sent.model).toBe("Qwen/Qwen3-8B"); // 改写为上游 model
+    expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } }); // jsonSchema 实测支持 → 原样保留
+    expect(sent.tools).toEqual([{ type: "function" }]); // tools 支持 → 保留
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer sf-test");
+  });
+
+  it("throws NonRetryableError when api key is not configured", async () => {
+    await expect(
+      siliconflow.chat(baseReq, { AUTH_TOKENS: "" }, signal),
+    ).rejects.toThrow(NonRetryableError);
+  });
+
+  it("maps 429 to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(429, { error: "rate limited" })));
+    await expect(siliconflow.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+
+  it("maps 400 to NonRetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { error: "bad request" })));
+    await expect(siliconflow.chat(baseReq, env, signal)).rejects.toThrow(NonRetryableError);
+  });
+
+  it("maps network failure to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    await expect(siliconflow.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+
+  it("maps non-JSON response to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
+    await expect(siliconflow.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
   });
 });

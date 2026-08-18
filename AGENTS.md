@@ -7,6 +7,7 @@
 ```bash
 npm test            # vitest 全量（上游 HTTP 全部 mock，无真实网络）
 npm run typecheck   # tsc --noEmit，必须干净
+npm run probe -- <providerId>  # 实测 chat 供应商四项能力（发真实上游请求，密钥取自根目录 .dev.vars）
 npm run dev         # wrangler dev 本地联调（需先配 .dev.vars）
 npm run deploy      # 发布前建议先 npx wrangler deploy --dry-run
 ```
@@ -70,9 +71,10 @@ src/
 ## 新增一个 chat 供应商（checklist）
 
 1. `src/chat/providers/` 新建文件，仿照 `openrouter.ts`（自包含：BASE_URL/UPSTREAM_MODEL/ENV_KEY/capabilities/chat）。
-2. `src/chat/chains.ts` 相应链中按降级顺序插入。
-3. `.dev.vars.example` 与生产 secret 补 key；`README.md` 配置表补一行。
-4. 测试按上节约定补齐；`npm run typecheck && npm test` 全绿后提交。
+2. `npm run probe -- <providerId>` 实测四项能力（systemPrompt/tools/jsonObject/jsonSchema），按输出建议校准 `capabilities`——**能力声明必须实测确认，不得凭文档或推断写入**。注意：探测单次上限 30s，慢模型（如默认开思考模式的 Qwen3）易超时得 inconclusive，须用 curl 放宽超时复测；json_schema 要用与提示词无关的严格 schema 做判别测试，确认是真执行而非被忽略。
+3. `src/chat/chains.ts` 相应链中按降级顺序插入。
+4. `.dev.vars.example` 与生产 secret 补 key；`README.md` 配置表补一行。
+5. 测试按上节约定补齐；`npm run typecheck && npm test` 全绿后提交。
 
 ## 已知边界（fix-later，勿在无关改动中顺手重构）
 

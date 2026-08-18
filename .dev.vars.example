@@ -7,6 +7,7 @@ AUTH_TOKENS=change-me-token-1,change-me-token-2
 OPENROUTER_API_KEY=
 DEEPSEEK_API_KEY=
 AGNES_API_KEY=
+SILICONFLOW_API_KEY=
 
 # read 供应商
 JINA_API_KEY=
