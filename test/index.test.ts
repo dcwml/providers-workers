@@ -215,14 +215,14 @@ describe("provider override (?provider=)", () => {
 
   it("chat: resolves provider and passes it to runChat", async () => {
     const res = await handler.fetch(
-      post("/v1/chat/completions?provider=openrouter", {
-        model: "sample-chat",
+      post("/v1/chat/completions?provider=gptsapi", {
+        model: "gpt-5.4-nano",
         messages: [{ role: "user", content: "hi" }],
       }),
       env,
     );
     expect(res.status).toBe(200);
-    expect((state.chatOnly as { id: string }).id).toBe("openrouter");
+    expect((state.chatOnly as { id: string }).id).toBe("gptsapi");
   });
 
   it("chat: rejects unknown provider with 400 and unknown_provider code", async () => {

@@ -49,6 +49,7 @@ curl -s http://localhost:8787/v1/read \
 | `OPENROUTER_API_KEY` | chat 示例供应商 openrouter |
 | `DEEPSEEK_API_KEY` | chat 示例供应商 deepseek-official |
 | `SILICONFLOW_API_KEY` | chat 供应商 siliconflow（上游模型 Qwen/Qwen3-8B） |
+| `GPTSAPI_API_KEY` | chat 供应商 gptsapi（上游模型 gpt-5.4-nano） |
 | `JINA_API_KEY` / `TAVILY_API_KEY` / `FIRECRAWL_API_KEY` | read 三家供应商 |
 
 ## 新增一个 chat 供应商

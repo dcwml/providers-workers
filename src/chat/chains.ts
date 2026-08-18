@@ -1,6 +1,7 @@
 import type { ChatProvider } from "./types";
 import { agnes } from "./providers/agnes";
 import { deepseekOfficial } from "./providers/deepseek-official";
+import { gptsapi } from "./providers/gptsapi";
 import { openrouter } from "./providers/openrouter";
 import { siliconflow } from "./providers/siliconflow";
 
@@ -11,8 +12,9 @@ import { siliconflow } from "./providers/siliconflow";
 export const CHAINS: Record<string, readonly ChatProvider[]> = {
   // "sample-chat": [openrouter, deepseekOfficial, siliconflow],
   // "sample-reasoning": [deepseekOfficial, openrouter],
-  "agnes-2.0-flash": [agnes],
-  "Qwen/Qwen3-8B": [siliconflow, agnes],
+  "agnes-2.0-flash": [agnes, gptsapi, siliconflow],
+  "Qwen/Qwen3-8B": [siliconflow, agnes, gptsapi],
+  "gpt-5.4-nano": [gptsapi, agnes, siliconflow],
 };
 
 /** 未注册的逻辑 model 统一回落到 agnes。 */
