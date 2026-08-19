@@ -111,11 +111,11 @@ new RequestRecorder(ctx, db, { requestId, feature, endpoint, model, tokenId })
 - `attempt(provider, info: AttemptInfo)`：先保留现有 console.log 格式不变，再异步落一行 provider_attempts。
 - `finish({ status, providerOk, elapsedMs })`：响应前调用，落一行 requests。
 - 所有 D1 写入包进 `ctx.waitUntil()`：不增加请求延迟；写失败仅 `console.warn`，绝不影响业务响应。
-- 401 路径无 recorder，用模块级 `recordUnauthorized(ctx, db, endpoint)` 记一行。
+- 401 路径无 recorder，用模块级 `recordUnauthorized(ctx, db, endpoint)` 记一行：`feature` 按 endpoint 路径前缀推导（`/v1/chat*`→chat、`/v1/embeddings*`→embeddings、`/v1/rerank*`→rerank、其余→read），`model` 留空串（鉴权失败时未解析 body）。
 
 Runner 接线（chat/read/embeddings/rerank 四处一致）：
 
-- runner 函数各加一个 `recorder` 参数；`onAttempt` 从 `(info) => logAttempt(feature, provider.id, info)` 改为 `(info) => recorder.attempt(provider.id, info)`（console.log 逻辑移入 recorder 内，日志行为不变）。
+- runner 函数各加一个 `recorder` 参数（放最后一个参数，可选；chat 现有 `retryOverrides`/`only` 参数位置不动，签名细节以实施计划为准，不构成行为约束）；`onAttempt` 从 `(info) => logAttempt(feature, provider.id, info)` 改为 `(info) => recorder.attempt(provider.id, info)`（console.log 逻辑移入 recorder 内，日志行为不变）。
 - 各 runner 的 outcome 类型增加 `providerOk?: string`（成功供应商 id），供 finish 记录。chat 的 `ChatOutcome`、read/embeddings/rerank 的对应类型同步扩展。
 - index.ts 在入口 `Date.now()` 计时，按 outcome 调 finish。
 
