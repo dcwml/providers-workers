@@ -2,15 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatOutcome } from "../src/chat/runner";
 import type { EmbeddingsOutcome } from "../src/embeddings/runner";
 import type { ReadOutcome } from "../src/read/runner";
+import type { RerankOutcome } from "../src/rerank/runner";
 import type { Env } from "../src/env";
 
 const state = vi.hoisted(() => ({
   chatOutcome: undefined as unknown as ChatOutcome,
   readOutcome: undefined as unknown as ReadOutcome,
   embeddingsOutcome: undefined as unknown as EmbeddingsOutcome,
+  rerankOutcome: undefined as unknown as RerankOutcome,
   chatOnly: undefined as unknown,
   readOnly: undefined as unknown,
   embeddingsProvider: undefined as unknown,
+  rerankProvider: undefined as unknown,
 }));
 
 vi.mock("../src/chat/runner", () => ({
@@ -34,6 +37,12 @@ vi.mock("../src/embeddings/runner", () => ({
     return state.embeddingsOutcome;
   },
 }));
+vi.mock("../src/rerank/runner", () => ({
+  runRerank: async (_req: unknown, _env: unknown, provider: unknown) => {
+    state.rerankProvider = provider;
+    return state.rerankOutcome;
+  },
+}));
 
 import handler from "../src/index";
 
@@ -53,9 +62,11 @@ beforeEach(() => {
   state.chatOutcome = { kind: "ok", status: 200, body: { id: "default" } };
   state.readOutcome = { kind: "ok", status: 200, markdown: "# default" };
   state.embeddingsOutcome = { kind: "ok", status: 200, body: { data: [] } };
+  state.rerankOutcome = { kind: "ok", status: 200, body: { results: [] } };
   state.chatOnly = undefined;
   state.readOnly = undefined;
   state.embeddingsProvider = undefined;
+  state.rerankProvider = undefined;
 });
 
 describe("auth", () => {
@@ -278,6 +289,102 @@ describe("embeddings endpoint", () => {
   });
 });
 
+describe("rerank endpoint", () => {
+  const validBody = {
+    model: "BAAI/bge-reranker-v2-m3",
+    query: "What is deep learning?",
+    documents: ["Deep learning is a branch of machine learning.", "It will rain tomorrow."],
+  };
+
+  it("passes through the runner body with 200", async () => {
+    state.rerankOutcome = {
+      kind: "ok",
+      status: 200,
+      body: { id: "x", results: [{ index: 0, relevance_score: 0.9 }] },
+    };
+    const res = await handler.fetch(post("/v1/rerank", validBody), env);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({
+      id: "x",
+      results: [{ index: 0, relevance_score: 0.9 }],
+    });
+  });
+
+  it("rejects invalid JSON with 400", async () => {
+    const req = new Request("https://gw.example/v1/rerank", {
+      method: "POST",
+      headers: { authorization: "Bearer sekret" },
+      body: "not json",
+    });
+    const res = await handler.fetch(req, env);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a valid JSON null body with 400", async () => {
+    const res = await handler.fetch(post("/v1/rerank", null), env);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects missing model with 400", async () => {
+    const res = await handler.fetch(
+      post("/v1/rerank", { query: "q", documents: ["a"] }),
+      env,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects missing or empty query/documents with 400", async () => {
+    const noQuery = await handler.fetch(
+      post("/v1/rerank", { model: "BAAI/bge-reranker-v2-m3", documents: ["a"] }),
+      env,
+    );
+    expect(noQuery.status).toBe(400);
+    const emptyQuery = await handler.fetch(
+      post("/v1/rerank", { model: "BAAI/bge-reranker-v2-m3", query: "", documents: ["a"] }),
+      env,
+    );
+    expect(emptyQuery.status).toBe(400);
+    const noDocs = await handler.fetch(
+      post("/v1/rerank", { model: "BAAI/bge-reranker-v2-m3", query: "q" }),
+      env,
+    );
+    expect(noDocs.status).toBe(400);
+    const emptyDocs = await handler.fetch(
+      post("/v1/rerank", { model: "BAAI/bge-reranker-v2-m3", query: "q", documents: [] }),
+      env,
+    );
+    expect(emptyDocs.status).toBe(400);
+  });
+
+  it("rejects unknown model with 400 model_not_found (no fallback)", async () => {
+    const res = await handler.fetch(
+      post("/v1/rerank", { model: "nope", query: "q", documents: ["a"] }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("model_not_found");
+    expect(body.error.message).toContain("model not found: nope");
+    expect(body.error.message).toContain("BAAI/bge-reranker-v2-m3");
+  });
+
+  it("maps failed outcome to 502 with provider_errors", async () => {
+    state.rerankOutcome = {
+      kind: "failed",
+      status: 502,
+      errors: [{ provider: "siliconflow", message: "dead" }],
+    };
+    const res = await handler.fetch(post("/v1/rerank", validBody), env);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as {
+      error: { code: string; provider_errors: unknown[] };
+    };
+    expect(body.error.code).toBe("provider_failed");
+    expect(body.error.provider_errors).toEqual([{ provider: "siliconflow", message: "dead" }]);
+  });
+});
+
 describe("provider override (?provider=)", () => {
   it("read: resolves provider and passes it to runRead", async () => {
     const res = await handler.fetch(
@@ -343,6 +450,35 @@ describe("provider override (?provider=)", () => {
   it("embeddings: rejects unknown provider with 400 and unknown_provider code", async () => {
     const res = await handler.fetch(
       post("/v1/embeddings?provider=bogus", { model: "BAAI/bge-m3", input: "hi" }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("unknown_provider");
+    expect(body.error.message).toContain("unknown provider: bogus");
+    expect(body.error.message).toContain("siliconflow");
+  });
+
+  it("rerank: resolves provider and passes it to runRerank", async () => {
+    const res = await handler.fetch(
+      post("/v1/rerank?provider=siliconflow", {
+        model: "BAAI/bge-reranker-v2-m3",
+        query: "q",
+        documents: ["a"],
+      }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    expect((state.rerankProvider as { id: string }).id).toBe("siliconflow");
+  });
+
+  it("rerank: rejects unknown provider with 400 and unknown_provider code", async () => {
+    const res = await handler.fetch(
+      post("/v1/rerank?provider=bogus", {
+        model: "BAAI/bge-reranker-v2-m3",
+        query: "q",
+        documents: ["a"],
+      }),
       env,
     );
     expect(res.status).toBe(400);

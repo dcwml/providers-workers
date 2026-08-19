@@ -13,6 +13,14 @@ import type { EmbeddingsProvider, EmbeddingsRequest } from "./embeddings/types";
 import type { Env } from "./env";
 import { getReaderProviderById, READER_PROVIDER_IDS, runRead } from "./read/runner";
 import type { ReaderProvider } from "./read/types";
+import {
+  RERANK_MODEL_IDS,
+  RERANK_PROVIDER_IDS,
+  getRerankProviderById,
+  getRerankProviderByModel,
+} from "./rerank/models";
+import { runRerank } from "./rerank/runner";
+import type { RerankProvider, RerankRequest } from "./rerank/types";
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -211,6 +219,85 @@ async function handleEmbeddings(
   return json(200, outcome.body);
 }
 
+async function handleRerank(
+  request: Request,
+  env: Env,
+  providerParam: string | null,
+): Promise<Response> {
+  const denied = await guard(request, env);
+  if (denied) return denied;
+
+  // ?provider= 覆盖（测试用）：隔离只跑指定单家。未知 provider 直接 400。
+  let only: RerankProvider | undefined;
+  if (providerParam !== null) {
+    only = getRerankProviderById(providerParam);
+    if (!only) {
+      return json(400, {
+        error: {
+          message: `unknown provider: ${providerParam}; valid providers: ${RERANK_PROVIDER_IDS.join(", ")}`,
+          type: "invalid_request_error",
+          code: "unknown_provider",
+        },
+      });
+    }
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json(400, {
+      error: { message: "invalid JSON body", type: "invalid_request_error", code: "invalid_json" },
+    });
+  }
+
+  const req = (body ?? {}) as Partial<RerankRequest>;
+  if (typeof req.model !== "string" || req.model.length === 0) {
+    return json(400, {
+      error: { message: "model is required", type: "invalid_request_error", code: "missing_model" },
+    });
+  }
+  const inputOk =
+    typeof req.query === "string" &&
+    req.query.length > 0 &&
+    Array.isArray(req.documents) &&
+    req.documents.length > 0;
+  if (!inputOk) {
+    return json(400, {
+      error: {
+        message: "query must be a non-empty string and documents must be a non-empty array",
+        type: "invalid_request_error",
+        code: "invalid_input",
+      },
+    });
+  }
+
+  // 单 provider 形式：无链、无降级。未注册的 model 直接 400（不像 chat 有回落链）。
+  const provider = only ?? getRerankProviderByModel(req.model);
+  if (!provider) {
+    return json(400, {
+      error: {
+        message: `model not found: ${req.model}; valid models: ${RERANK_MODEL_IDS.join(", ")}`,
+        type: "invalid_request_error",
+        code: "model_not_found",
+      },
+    });
+  }
+
+  const outcome = await runRerank(req as RerankRequest, env, provider);
+  if (outcome.kind === "failed") {
+    return json(502, {
+      error: {
+        message: "rerank provider failed",
+        type: "upstream_error",
+        code: "provider_failed",
+        provider_errors: outcome.errors,
+      },
+    });
+  }
+  return json(200, outcome.body);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -219,6 +306,7 @@ export default {
       if (url.pathname === "/v1/chat/completions") return handleChat(request, env, providerParam);
       if (url.pathname === "/v1/read") return handleRead(request, env, providerParam);
       if (url.pathname === "/v1/embeddings") return handleEmbeddings(request, env, providerParam);
+      if (url.pathname === "/v1/rerank") return handleRerank(request, env, providerParam);
     }
     return json(404, { error: { message: "not found" } });
   },
