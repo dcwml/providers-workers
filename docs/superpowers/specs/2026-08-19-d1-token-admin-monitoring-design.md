@@ -133,7 +133,7 @@ Runner 接线（chat/read/embeddings/rerank 四处一致）：
 
 ### 鉴权与安全
 
-- 全部 `/admin*` 路由要求 `Authorization: Bearer <ADMIN_TOKEN>`（复用常量时间比较）。ADMIN_TOKEN 未配置时 `/admin*` 一律 404，业务接口不受影响。
+- `/admin/api/*` 全部要求 `Authorization: Bearer <ADMIN_TOKEN>`（复用常量时间比较）。`GET /admin` 返回的是不含任何数据的静态登录壳，不鉴权——浏览器地址栏导航无法携带 Bearer 头；壳内加 noindex，登录后才经 fetch 带 Bearer 取数。ADMIN_TOKEN 未配置时 `/admin` 与 `/admin/api/*` 一律 404，业务接口不受影响。
 - `/admin*` 路由在 index.ts 中先于业务鉴权判断。
 - 无 cookie、无 CSRF 面；页面登录框收 ADMIN_TOKEN 存 sessionStorage，fetch 带 Bearer。
 - 输入校验：`prefix + random` 去空白后非空，`random` 长度 ≥ 8（否则掩码失去意义，返回 400）；除此之外不做字符集/强度限制（自己的后台，编辑自由）。UNIQUE 冲突返回 409。
