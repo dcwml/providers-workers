@@ -2,8 +2,8 @@ import type { Env } from "../env";
 
 export interface EmbeddingsRequest {
   model: string;
-  /** 单条文本或文本数组 */
-  input: string | string[];
+  /** 单条文本、文本数组或多模态对象数组（{text}/{image} 项，jina 上游支持图文混合） */
+  input: string | Array<string | { text?: string; image?: string }>;
   encoding_format?: "float" | "base64";
   dimensions?: number;
   user?: string;
