@@ -25,13 +25,17 @@ describe("model mapping", () => {
     expect(getEmbeddingsProviderByModel("BAAI/bge-m3")?.id).toBe("siliconflow");
   });
 
+  it("maps jina-embeddings-v5-omni-small to jina", () => {
+    expect(getEmbeddingsProviderByModel("jina-embeddings-v5-omni-small")?.id).toBe("jina");
+  });
+
   it("returns undefined for unknown model (no fallback chain)", () => {
     expect(getEmbeddingsProviderByModel("nope")).toBeUndefined();
   });
 
   it("exposes model ids and provider ids for error messages", () => {
-    expect(EMBEDDING_MODEL_IDS).toEqual(["BAAI/bge-m3"]);
-    expect(EMBEDDINGS_PROVIDER_IDS).toEqual(["siliconflow"]);
+    expect(EMBEDDING_MODEL_IDS).toEqual(["BAAI/bge-m3", "jina-embeddings-v5-omni-small"]);
+    expect(EMBEDDINGS_PROVIDER_IDS).toEqual(["siliconflow", "jina"]);
     expect(getEmbeddingsProviderById("siliconflow")?.id).toBe("siliconflow");
     expect(getEmbeddingsProviderById("bogus")).toBeUndefined();
   });

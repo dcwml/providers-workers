@@ -1,4 +1,5 @@
 import type { EmbeddingsProvider } from "./types";
+import { jina } from "./providers/jina";
 import { siliconflow } from "./providers/siliconflow";
 
 /**
@@ -7,6 +8,7 @@ import { siliconflow } from "./providers/siliconflow";
  */
 export const MODELS: Record<string, EmbeddingsProvider> = {
   "BAAI/bge-m3": siliconflow,
+  "jina-embeddings-v5-omni-small": jina,
 };
 
 export const EMBEDDING_MODEL_IDS: readonly string[] = Object.keys(MODELS);
