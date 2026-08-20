@@ -54,3 +54,4 @@ spec §9 验收标准逐条对照：
 - 本 key 已出现在聊天记录，如介意可在 Jina 后台轮换（更新 .dev.vars 与生产 secret 即可，代码不动）
 - zhipu chat provider 已由用户并行执行完成（与本任务互不阻塞；其计划中的「基线修复」即本计划 Task 1 的同一修复，已在 c344005/c4425f6 落地）
 - README 配置表缺 agnes 行（既有遗漏，未处理）
+- 延后（终审 deferred，与 2026-08-14 完成报告 fix-later 清单同性质）：缺 key 错误消息契约（`... is not configured` 后缀，probe.ts 正则依赖）目前仅代码保证、无测试断言；建议后续对所有供应商做一次全局 `rejects.toThrow(/is not configured/)` 断言扫描，而非逐家补丁
