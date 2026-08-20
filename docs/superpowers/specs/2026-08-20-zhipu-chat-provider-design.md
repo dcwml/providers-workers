@@ -28,7 +28,7 @@ providers 网关（Cloudflare Workers，OpenAI 兼容）新增第 6 家 chat 供
 - `UPSTREAM_MODEL = "glm-4.7-flash"`
 - `ENV_KEY = "ZHIPU_API_KEY"`
 - `capabilities`：初始占位全 true，probe 实测后校准（probeProvider 会临时覆盖为全 true 再恢复，占位值不影响探测结果）
-- `chat()` 流程：缺 key → `NonRetryableError`；`sanitizeRequest` 按 capabilities 裁剪 → `body.model` 改写为 UPSTREAM_MODEL → fetch（Bearer 头，signal 透传）→ 非 2xx 走 `classifyHttpStatus` → 非 JSON 走 `RetryableError`（消息前缀 `zhipu:`）→ JSON 原样返回
+- `chat()` 流程：缺 key → `NonRetryableError`（消息保持 `${ENV_KEY} is not configured` 格式——probe.ts 以 `is not configured$` 后缀识别环境问题，区别于能力被拒）；`sanitizeRequest` 按 capabilities 裁剪 → `body.model` 改写为 UPSTREAM_MODEL → fetch（Bearer 头，signal 透传）→ 非 2xx 走 `classifyHttpStatus` → 非 JSON 走 `RetryableError`（消息前缀 `zhipu:`）→ JSON 原样返回
 
 ### 3.2 `src/chat/chains.ts`
 
@@ -73,7 +73,7 @@ CHAINS 增加一行 `"glm-4.7-flash": [zhipu, agnes, gptsapi]`；FALLBACK_CHAIN 
 
 ## 7. 验收标准
 
-- `npm run typecheck && npm test` 全绿（当前基线 191 个测试，含 1 个已知失败；修复后 191 全绿，zhipu 完成后 192）
+- `npm run typecheck && npm test` 全绿（当前基线 191 个测试含 1 个已知失败；siliconflow 断言修复后 191 全绿，新增 zhipu 6 条后共 197）
 - probe 四项能力实测结论（含 curl 复测结果、默认思考行为观察）记录在完成报告
 - README / .dev.vars.example 与实际配置一致
 
