@@ -71,9 +71,11 @@ CHAINS 增加一行 `"glm-4.7-flash": [zhipu, agnes, gptsapi]`；FALLBACK_CHAIN 
 
 若 probe 校准后某能力为 false（如 systemPrompt 不支持），测试 1 断言相应调整（json_schema 降级 / system 并入首条 user）。
 
+另在 `test/chat/chains.test.ts` 追加 1 条链顺序断言（对齐 gpt-5.4-nano 既有先例）：`getChain("glm-4.7-flash")` 的 provider id 依次为 `["zhipu", "agnes", "gptsapi"]`。
+
 ## 7. 验收标准
 
-- `npm run typecheck && npm test` 全绿（当前基线 191 个测试含 1 个已知失败；siliconflow 断言修复后 191 全绿，新增 zhipu 6 条后共 197）
+- `npm run typecheck && npm test` 全绿（当前基线 191 个测试含 1 个已知失败；siliconflow 断言修复后 191 全绿，新增 zhipu 6 条 + chains 1 条后共 198）
 - probe 四项能力实测结论（含 curl 复测结果、默认思考行为观察）记录在完成报告
 - README / .dev.vars.example 与实际配置一致
 
