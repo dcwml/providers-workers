@@ -4,6 +4,7 @@ import { deepseekOfficial } from "./providers/deepseek-official";
 import { gptsapi } from "./providers/gptsapi";
 import { openrouter } from "./providers/openrouter";
 import { siliconflow } from "./providers/siliconflow";
+import { zhipu } from "./providers/zhipu";
 
 /**
  * 逻辑 model → 供应商调用顺序（写死）。
@@ -15,6 +16,7 @@ export const CHAINS: Record<string, readonly ChatProvider[]> = {
   "agnes-2.0-flash": [agnes, gptsapi, siliconflow],
   "Qwen/Qwen3-8B": [siliconflow, agnes, gptsapi],
   "gpt-5.4-nano": [gptsapi, agnes, siliconflow],
+  "glm-4.7-flash": [zhipu, agnes, gptsapi],
 };
 
 /** 未注册的逻辑 model 统一回落到 agnes。 */

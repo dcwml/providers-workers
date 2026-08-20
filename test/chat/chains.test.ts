@@ -10,6 +10,10 @@ describe("getChain", () => {
     expect(getChain("gpt-5.4-nano").map((p) => p.id)).toEqual(["gptsapi", "agnes", "siliconflow"]);
   });
 
+  it("maps glm-4.7-flash to the zhipu-first chain", () => {
+    expect(getChain("glm-4.7-flash").map((p) => p.id)).toEqual(["zhipu", "agnes", "gptsapi"]);
+  });
+
   it("falls back to the agnes chain for unknown models", () => {
     expect(getChain("whatever")).toBe(FALLBACK_CHAIN);
     expect(FALLBACK_CHAIN.map((p) => p.id)).toEqual(["agnes"]);
