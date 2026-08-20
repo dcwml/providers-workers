@@ -991,7 +991,8 @@ describe("telemetry", () => {
     );
     await Promise.all(c.promises);
     const row = d1.statements.find((s) => s.sql === INSERT_REQUEST_SQL);
-    expect(row?.params[2]).toBe("chat");
+    expect(row?.params[1]).toBe("chat");
+    expect(row?.params[2]).toBe("/v1/chat/completions");
     expect(row?.params[3]).toBe("m1");
   });
 
