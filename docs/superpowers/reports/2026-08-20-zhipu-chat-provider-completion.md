@@ -49,8 +49,7 @@ probe 单次直连无重试（单次上限 30s），瞬时限流即 inconclusive
 
 **tools → true**（判定：200 即 accepted；返回 tool_calls 则行为亦验证）：
 
-- 第 1–4 次（间隔 15s/15s/30s）：HTTP 429 code 1305（模型级限流持续；其中一次为本地 DNS 解析失败非数据点，另首次误发非简报原文 body 已作废不采信）。
-- 第 5 次（间隔 20s）：**HTTP 200，time 37.96s**，`finish_reason` = `"tool_calls"`，且实际返回 `tool_calls: [{function: {arguments: "{\"city\":\"Paris\"}", name: "get_weather"}, ...}]`。
+- 首次尝试误发了非简报原文的 body（多加了消息，作废不采信；其响应亦为 429）。随后按简报原文 body 复测：第 1–3 次（间隔 15s/15s，及 jsonObject 复测后间隔 30s）均为 HTTP 429 code 1305（模型级限流持续）；第 4 次（间隔 60s）为本地 DNS 解析失败（curl exit 6，非上游数据点）；第 5 次（间隔 20s）：**HTTP 200，time 37.96s**，`finish_reason` = `"tool_calls"`，且实际返回 `tool_calls: [{function: {arguments: "{\"city\":\"Paris\"}", name: "get_weather"}, ...}]`。
 - **判定：请求被接受且工具调用行为真实发生（参数正确）→ true。** 另注意该次 `prompt_tokens` = 166（对比无 tools 调用的 13–21），上游疑似注入了工具协议 system 提示词。
 
 **jsonObject → true**（判定：200 且 content 为合法 JSON）：
