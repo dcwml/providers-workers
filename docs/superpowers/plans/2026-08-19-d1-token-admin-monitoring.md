@@ -433,7 +433,7 @@ import { makeFakeD1 } from "./helpers";
 function makeEnv(rows: Record<string, unknown>[] = [{ id: 7 }]): WorkerEnv {
   const fake = makeFakeD1();
   fake.setRows(TOKEN_LOOKUP_SQL, rows);
-  return { DB: fake.db };
+  return { DB: fake.db } as WorkerEnv;
 }
 
 const env = makeEnv();
@@ -467,7 +467,7 @@ describe("auth", () => {
   it("returns 500 when the token store (D1) fails", async () => {
     const fake = makeFakeD1();
     fake.failOnSubstring(TOKEN_LOOKUP_SQL);
-    const envDown: WorkerEnv = { DB: fake.db };
+    const envDown: WorkerEnv = { DB: fake.db } as WorkerEnv;
     const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), envDown);
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({
@@ -966,7 +966,7 @@ describe("telemetry", () => {
     const d1 = makeFakeD1();
     d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 3 }]);
     const c = makeFakeCtx();
-    const envReq: WorkerEnv = { DB: d1.db };
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
     const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), envReq, c.ctx);
     expect(res.status).toBe(200);
     await Promise.all(c.promises);
@@ -983,7 +983,7 @@ describe("telemetry", () => {
     const d1 = makeFakeD1();
     d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 3 }]);
     const c = makeFakeCtx();
-    const envReq: WorkerEnv = { DB: d1.db };
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
     await handler.fetch(
       post("/v1/chat/completions", { model: "m1", messages: [{ role: "user", content: "hi" }] }),
       envReq,
@@ -998,7 +998,7 @@ describe("telemetry", () => {
   it("records a 401 row for unauthorized calls (token_id NULL, no attempts)", async () => {
     const d1 = makeFakeD1();
     const c = makeFakeCtx();
-    const envReq: WorkerEnv = { DB: d1.db };
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
     const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }, "wrong"), envReq, c.ctx);
     expect(res.status).toBe(401);
     await Promise.all(c.promises);
@@ -1011,7 +1011,7 @@ describe("telemetry", () => {
     const d1 = makeFakeD1();
     d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 3 }]);
     const c = makeFakeCtx();
-    const envReq: WorkerEnv = { DB: d1.db };
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
     const res = await handler.fetch(post("/v1/read", { url: "not-a-url" }), envReq, c.ctx);
     expect(res.status).toBe(400);
     await Promise.all(c.promises);
@@ -1301,7 +1301,7 @@ import { makeFakeD1 } from "./helpers";
 const ADMIN = "admin-secret";
 
 function makeEnv(fake = makeFakeD1(), adminToken = ADMIN): WorkerEnv {
-  return { DB: fake.db, ADMIN_TOKEN: adminToken };
+  return { DB: fake.db, ADMIN_TOKEN: adminToken } as WorkerEnv;
 }
 
 function req(method: string, path: string, body?: unknown, token = ADMIN): Request {
