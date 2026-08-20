@@ -36,6 +36,8 @@ describe("siliconflow embeddings", () => {
       dimensions: 1024,
       user: "u1",
       bogus: "strip-me",
+      task: "retrieval.query",
+      normalized: true,
     };
 
     const res = await siliconflow.embed(req, env, signal);
@@ -51,7 +53,7 @@ describe("siliconflow embeddings", () => {
       encoding_format: "float",
       dimensions: 1024,
       user: "u1",
-    }); // bogus 字段被裁剪
+    }); // bogus 与 jina 专属字段（task/normalized）被裁剪
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer sf-test");
   });
 
