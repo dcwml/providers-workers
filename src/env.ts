@@ -1,5 +1,4 @@
 export interface Env {
-  AUTH_TOKENS: string;
   ADMIN_TOKEN?: string;
   OPENROUTER_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;

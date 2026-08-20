@@ -3,7 +3,9 @@ import type { ChatOutcome } from "../src/chat/runner";
 import type { EmbeddingsOutcome } from "../src/embeddings/runner";
 import type { ReadOutcome } from "../src/read/runner";
 import type { RerankOutcome } from "../src/rerank/runner";
-import type { Env } from "../src/env";
+import { TOKEN_LOOKUP_SQL } from "../src/auth";
+import type { WorkerEnv } from "../src/env";
+import { makeFakeD1 } from "./helpers";
 
 const state = vi.hoisted(() => ({
   chatOutcome: undefined as unknown as ChatOutcome,
@@ -46,7 +48,13 @@ vi.mock("../src/rerank/runner", () => ({
 
 import handler from "../src/index";
 
-const env: Env = { AUTH_TOKENS: "sekret" };
+function makeEnv(rows: Record<string, unknown>[] = [{ id: 7 }]): WorkerEnv {
+  const fake = makeFakeD1();
+  fake.setRows(TOKEN_LOOKUP_SQL, rows);
+  return { DB: fake.db } as WorkerEnv;
+}
+
+const env = makeEnv();
 
 function post(path: string, body: unknown, token?: string): Request {
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -85,8 +93,19 @@ describe("auth", () => {
       headers: { authorization: "Bearer wrong" },
       body: "not json",
     });
-    const res = await handler.fetch(req, env);
+    const res = await handler.fetch(req, makeEnv([]));
     expect(res.status).toBe(401);
+  });
+
+  it("returns 500 when the token store (D1) fails", async () => {
+    const fake = makeFakeD1();
+    fake.failOnSubstring(TOKEN_LOOKUP_SQL);
+    const envDown: WorkerEnv = { DB: fake.db } as WorkerEnv;
+    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), envDown);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: { message: "auth store unavailable", type: "server_error", code: "auth_store_error" },
+    });
   });
 });
 

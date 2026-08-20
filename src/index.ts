@@ -1,4 +1,4 @@
-import { isAuthorized } from "./auth";
+import { authorize } from "./auth";
 import { CHAT_PROVIDER_IDS, getChatProviderById } from "./chat/chains";
 import { runChat } from "./chat/runner";
 import type { ChatProvider, ChatRequest } from "./chat/types";
@@ -10,7 +10,7 @@ import {
 } from "./embeddings/models";
 import { runEmbeddings } from "./embeddings/runner";
 import type { EmbeddingsProvider, EmbeddingsRequest } from "./embeddings/types";
-import type { Env } from "./env";
+import type { WorkerEnv } from "./env";
 import { getReaderProviderById, READER_PROVIDER_IDS, runRead } from "./read/runner";
 import type { ReaderProvider } from "./read/types";
 import {
@@ -29,14 +29,20 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-async function guard(request: Request, env: Env): Promise<Response | null> {
-  if (await isAuthorized(request, env.AUTH_TOKENS)) return null;
+async function guard(request: Request, env: WorkerEnv): Promise<Response | null> {
+  const result = await authorize(request, env.DB);
+  if (result.ok) return null;
+  if (result.reason === "db-error") {
+    return json(500, {
+      error: { message: "auth store unavailable", type: "server_error", code: "auth_store_error" },
+    });
+  }
   return json(401, { error: { message: "unauthorized" } });
 }
 
 async function handleChat(
   request: Request,
-  env: Env,
+  env: WorkerEnv,
   providerParam: string | null,
 ): Promise<Response> {
   const denied = await guard(request, env);
@@ -99,7 +105,7 @@ async function handleChat(
 
 async function handleRead(
   request: Request,
-  env: Env,
+  env: WorkerEnv,
   providerParam: string | null,
 ): Promise<Response> {
   const denied = await guard(request, env);
@@ -144,7 +150,7 @@ async function handleRead(
 
 async function handleEmbeddings(
   request: Request,
-  env: Env,
+  env: WorkerEnv,
   providerParam: string | null,
 ): Promise<Response> {
   const denied = await guard(request, env);
@@ -221,7 +227,7 @@ async function handleEmbeddings(
 
 async function handleRerank(
   request: Request,
-  env: Env,
+  env: WorkerEnv,
   providerParam: string | null,
 ): Promise<Response> {
   const denied = await guard(request, env);
@@ -299,7 +305,7 @@ async function handleRerank(
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "POST") {
       const providerParam = url.searchParams.get("provider");

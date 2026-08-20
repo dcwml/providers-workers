@@ -1,32 +1,52 @@
-async function sha256Bytes(value: string): Promise<Uint8Array> {
+import type { D1Database } from "@cloudflare/workers-types";
+
+export type AuthResult =
+  | { ok: true; tokenId: number }
+  | { ok: false; reason: "missing" }
+  | { ok: false; reason: "invalid" }
+  | { ok: false; reason: "db-error" };
+
+export const TOKEN_LOOKUP_SQL = "SELECT id FROM tokens WHERE token_hash = ? AND enabled = 1";
+
+export async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return new Uint8Array(digest);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** 恒时字符串比较：先各自 SHA-256 定长，再逐字节 XOR 累计，避免时序侧信道。 */
-async function constantTimeEquals(a: string, b: string): Promise<boolean> {
-  const [ha, hb] = await Promise.all([sha256Bytes(a), sha256Bytes(b)]);
+/** 恒时字符串比较：先各自 SHA-256 定长，再逐字节 XOR 累计，避免时序侧信道。供 ADMIN_TOKEN 校验复用。 */
+export async function constantTimeEquals(a: string, b: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(a)),
+    crypto.subtle.digest("SHA-256", encoder.encode(b)),
+  ]);
+  const aBytes = new Uint8Array(ha);
+  const bBytes = new Uint8Array(hb);
   let diff = 0;
-  for (let i = 0; i < ha.length; i++) {
-    diff |= (ha[i] ?? 0) ^ (hb[i] ?? 0);
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
   }
   return diff === 0;
 }
 
-export async function isAuthorized(request: Request, tokensCsv: string): Promise<boolean> {
-  if (!tokensCsv) return false;
+/**
+ * 业务接口鉴权：对传入 token 算 SHA-256，按哈希查 tokens 表（enabled=1）。
+ * 哈希查库无非对称时序面，不需要逐 token 常量时间比较。
+ */
+export async function authorize(request: Request, db: D1Database): Promise<AuthResult> {
   const header = request.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match || !match[1]) return false;
+  if (!match || !match[1]) return { ok: false, reason: "missing" };
   const provided = match[1].trim();
-  if (provided.length === 0) return false;
+  if (provided.length === 0) return { ok: false, reason: "missing" };
 
-  const tokens = tokensCsv
-    .split(",")
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
-  for (const token of tokens) {
-    if (await constantTimeEquals(provided, token)) return true;
+  const tokenHash = await sha256Hex(provided);
+  let row: { id: number } | null;
+  try {
+    row = await db.prepare(TOKEN_LOOKUP_SQL).bind(tokenHash).first<{ id: number }>();
+  } catch {
+    return { ok: false, reason: "db-error" };
   }
-  return false;
+  if (row === null) return { ok: false, reason: "invalid" };
+  return { ok: true, tokenId: row.id };
 }
