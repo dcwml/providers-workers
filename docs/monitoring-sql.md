@@ -87,7 +87,7 @@ ORDER BY created_at DESC
 LIMIT 50;
 ```
 
-**6. 上面某条 502 请求的供应商逐家明细**（把 `<request_id>` 换成上一条查不到就先 `SELECT request_id FROM requests WHERE status=502 ORDER BY id DESC LIMIT 1;`）
+**6. 上面某条 502 请求的供应商逐家明细**（把 `<request_id>` 换成上一条查到的 request_id——上一条没选出该列时，先 `SELECT request_id FROM requests WHERE status=502 ORDER BY id DESC LIMIT 1;` 取最近一笔；一条都查不到说明库里还没有请求记录，先随便调用一次任一业务接口产生数据再查）
 
 ```sql
 SELECT provider, attempt, result, elapsed_ms, error
@@ -141,3 +141,7 @@ WHERE datetime(created_at) >= datetime('now', '-30 days')
 GROUP BY feature, model
 ORDER BY calls DESC;
 ```
+
+## 容量提示
+
+每次网关调用至少写 2 行（`requests` 1 行 + 每次上游尝试各 1 行，含重试），D1 免费档每日写入行数上限约 10 万，可据此估算日志留存与调用量上限。

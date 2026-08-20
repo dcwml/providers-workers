@@ -30,26 +30,36 @@ npx wrangler d1 migrations apply providers_db --local   # 初始化本地 D1（t
 npm run dev                      # wrangler dev 本地启动
 ```
 
-冒烟示例：
+冒烟前先创建一个网关调用 token：用 `.dev.vars` 里的 `ADMIN_TOKEN` 调本地管理 API（完整 token 仅创建时返回一次；也可在 `http://localhost:8787/admin` 页面操作）：
+
+```bash
+curl -s http://localhost:8787/admin/api/tokens \
+  -H "Authorization: Bearer <你的 ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"prefix":"sk_local_","random":"localtest1234","label":"smoke"}'
+# → {"id":1,"token":"sk_local_localtest1234","token_mask":"sk_local_loca...1234"}
+```
+
+冒烟示例（以下 `Authorization` 用上一步返回的 token）：
 
 ```bash
 curl -s http://localhost:8787/v1/chat/completions \
-  -H "Authorization: Bearer change-me-token-1" \
+  -H "Authorization: Bearer sk_local_localtest1234" \
   -H "Content-Type: application/json" \
   -d '{"model":"sample-chat","messages":[{"role":"user","content":"hi"}]}'
 
 curl -s http://localhost:8787/v1/read \
-  -H "Authorization: Bearer change-me-token-1" \
+  -H "Authorization: Bearer sk_local_localtest1234" \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com"}'
 
 curl -s http://localhost:8787/v1/embeddings \
-  -H "Authorization: Bearer change-me-token-1" \
+  -H "Authorization: Bearer sk_local_localtest1234" \
   -H "Content-Type: application/json" \
   -d '{"model":"BAAI/bge-m3","input":"hello"}'
 
 curl -s http://localhost:8787/v1/rerank \
-  -H "Authorization: Bearer change-me-token-1" \
+  -H "Authorization: Bearer sk_local_localtest1234" \
   -H "Content-Type: application/json" \
   -d '{"model":"BAAI/bge-reranker-v2-m3","query":"What is deep learning?","documents":["Deep learning is a branch of machine learning.","It will rain tomorrow."]}'
 ```

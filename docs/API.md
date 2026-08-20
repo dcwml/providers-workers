@@ -17,7 +17,7 @@
 
 ## 通用约定
 
-**鉴权**：所有请求必须携带 `Authorization: Bearer <token>`，token 由管理员经 /admin 后台创建与停用（存 D1，管理密钥为 ADMIN_TOKEN secret）。缺失或错误返回 `401 {"error":{"message":"unauthorized"}}`。
+**鉴权**：业务接口（`/v1/*`）必须携带 `Authorization: Bearer <token>`，token 由管理员经 /admin 后台创建与停用（存 D1，管理密钥为 ADMIN_TOKEN secret）。缺失或错误返回 `401 {"error":{"message":"unauthorized"}}`。`/admin` 页面本身免鉴权；`/admin/api/*` 用 `ADMIN_TOKEN`（非业务端点，见上表）。
 
 **供应商隔离参数**：所有接口支持 URL 追加 `?provider=<id>` 强制只跑指定的一家（不做降级），用于排查单家供应商问题；未知取值返回 400 并列出合法 id。正常业务调用不要带此参数。
 
