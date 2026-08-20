@@ -23,7 +23,7 @@
 - 响应标准 OpenAI 风格（`data[].embedding` + `model` + `usage`），现有提取逻辑直接适用
 - 用户提供的 key 与 `.dev.vars` 原 `JINA_API_KEY`（read 链在用）不是同一把；定案为新 key 覆盖、read + embeddings 共用
 
-实施期补测（Task 4，原始响应存于工作区 `jina_dim.json` / `jina_b64.json`）：
+实施期补测（Task 4；实测结论已记录于本报告与 `docs/API-embeddings.md`，dimensions/encoding_format 两项：HTTP 200 + 512 维 / base64 字符串；原始响应为临时产物未归档，如需复测按 API-embeddings.md 注意事项中的参数重放即可）：
 
 - `dimensions=512` → HTTP 200，返回 **512 维**向量（`usage.total_tokens: 4`）——**受支持，Matryoshka 降维生效**
 - `encoding_format=base64` → HTTP 200，`embedding` 为 **base64 字符串**而非浮点数组——**受支持**
