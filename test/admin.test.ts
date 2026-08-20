@@ -59,6 +59,16 @@ describe("GET /admin/api/tokens", () => {
     expect(body).not.toContain("token_hash");
     expect(body).not.toContain("abcd1234wxyz");
   });
+
+  it("maps D1 failures on LIST to 500 db_error", async () => {
+    const fake = makeFakeD1();
+    fake.failOnSubstring(LIST_SQL);
+    const res = await handleAdminApi(req("GET", "/admin/api/tokens"), makeEnv(fake));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: { message: "database error", code: "db_error" },
+    });
+  });
 });
 
 describe("POST /admin/api/tokens", () => {
@@ -142,6 +152,16 @@ describe("PATCH /admin/api/tokens/:id", () => {
     fake.setRunMeta(UPDATE_SQL, { changes: 0, last_row_id: 0 });
     const res = await handleAdminApi(req("PATCH", "/admin/api/tokens/99", { enabled: true }), makeEnv(fake));
     expect(res.status).toBe(404);
+  });
+
+  it("maps D1 failures on UPDATE to 500 db_error", async () => {
+    const fake = makeFakeD1();
+    fake.failOnSubstring(UPDATE_SQL);
+    const res = await handleAdminApi(req("PATCH", "/admin/api/tokens/5", { enabled: true }), makeEnv(fake));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: { message: "database error", code: "db_error" },
+    });
   });
 });
 

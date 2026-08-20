@@ -44,14 +44,26 @@ export async function handleAdminApi(request: Request, env: WorkerEnv): Promise<
   const path = new URL(request.url).pathname;
 
   if (path === "/admin/api/tokens" && request.method === "GET") {
-    const result = await env.DB.prepare(LIST_SQL).all<{
+    let results: {
       id: number;
       label: string;
       token_mask: string;
       enabled: number;
       created_at: string;
-    }>();
-    return json(200, { tokens: result.results });
+    }[];
+    try {
+      const result = await env.DB.prepare(LIST_SQL).all<{
+        id: number;
+        label: string;
+        token_mask: string;
+        enabled: number;
+        created_at: string;
+      }>();
+      results = result.results;
+    } catch {
+      return json(500, { error: { message: "database error", code: "db_error" } });
+    }
+    return json(200, { tokens: results });
   }
 
   if (path === "/admin/api/tokens" && request.method === "POST") {
@@ -96,16 +108,28 @@ export async function handleAdminApi(request: Request, env: WorkerEnv): Promise<
       if (typeof enabled !== "boolean") {
         return json(400, { error: { message: "enabled must be a boolean", code: "invalid_enabled" } });
       }
-      const result = await env.DB.prepare(UPDATE_SQL).bind(enabled ? 1 : 0, id).run();
-      if ((result.meta.changes ?? 0) === 0) {
+      let changes: number;
+      try {
+        const result = await env.DB.prepare(UPDATE_SQL).bind(enabled ? 1 : 0, id).run();
+        changes = result.meta.changes ?? 0;
+      } catch {
+        return json(500, { error: { message: "database error", code: "db_error" } });
+      }
+      if (changes === 0) {
         return json(404, { error: { message: "token not found", code: "token_not_found" } });
       }
       return json(200, { ok: true });
     }
 
     if (request.method === "DELETE") {
-      const result = await env.DB.prepare(DELETE_SQL).bind(id).run();
-      if ((result.meta.changes ?? 0) === 0) {
+      let changes: number;
+      try {
+        const result = await env.DB.prepare(DELETE_SQL).bind(id).run();
+        changes = result.meta.changes ?? 0;
+      } catch {
+        return json(500, { error: { message: "database error", code: "db_error" } });
+      }
+      if (changes === 0) {
         return json(404, { error: { message: "token not found", code: "token_not_found" } });
       }
       return json(200, { ok: true });
