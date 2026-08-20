@@ -7,5 +7,6 @@ logs/
 .superpowers/
 .dev.vars
 .wrangler/
+.worktrees/
 dist/
 CLAUDE.local.md
