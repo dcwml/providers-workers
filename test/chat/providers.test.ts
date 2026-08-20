@@ -108,7 +108,7 @@ describe("siliconflow", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.siliconflow.cn/v1/chat/completions");
     const sent = JSON.parse(String(init.body));
-    expect(sent.model).toBe("Qwen/Qwen3-8B"); // 改写为上游 model
+    expect(sent.model).toBe("Qwen/Qwen3.5-4B"); // 改写为上游 model
     expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } }); // jsonSchema 实测支持 → 原样保留
     expect(sent.tools).toEqual([{ type: "function" }]); // tools 支持 → 保留
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer sf-test");
