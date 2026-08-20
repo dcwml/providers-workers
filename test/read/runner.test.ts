@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runRead } from "../../src/read/runner";
 import { NonRetryableError, RetryableError } from "../../src/errors";
 import type { Env } from "../../src/env";
+import { INSERT_ATTEMPT_SQL, RequestRecorder } from "../../src/telemetry";
+import { makeFakeCtx, makeFakeD1 } from "../helpers";
 import { firecrawl } from "../../src/read/providers/firecrawl";
 import { jina } from "../../src/read/providers/jina";
 
@@ -130,5 +132,20 @@ describe("runRead", () => {
       expect(outcome.errors).toEqual([{ provider: "jina", message: "jina empty" }]);
       expect(calls).toEqual(["jina"]);
     });
+  });
+
+  it("records attempts via recorder and reports providerOk on success", async () => {
+    const d1 = makeFakeD1();
+    const c = makeFakeCtx();
+    const recorder = new RequestRecorder(c.ctx, d1.db, {
+      requestId: "r2", feature: "read", endpoint: "/v1/read", model: "", tokenId: 1,
+    });
+    const outcome = await runRead("https://example.com", env, fast, undefined, recorder);
+    expect(outcome.kind).toBe("ok");
+    expect(outcome.providerOk).toBe("jina");
+    await Promise.all(c.promises);
+    const rows = d1.statements.filter((s) => s.sql === INSERT_ATTEMPT_SQL);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.params).toEqual(["r2", "read", "jina", "", 1, "ok", expect.any(Number), null]);
   });
 });

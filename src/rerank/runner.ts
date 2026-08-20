@@ -3,6 +3,7 @@ import type { ProviderError } from "../errors";
 import type { Env } from "../env";
 import { logAttempt } from "../log";
 import { withRetry, type RetryOptions } from "../retry";
+import type { RequestRecorder } from "../telemetry";
 import type { RerankProvider, RerankRequest } from "./types";
 
 export interface RerankOutcome {
@@ -10,6 +11,8 @@ export interface RerankOutcome {
   status: number;
   body?: unknown;
   errors?: ProviderError[];
+  /** 成功时由哪家供应商提供（kind=ok 才有），供监控记录 */
+  providerOk?: string;
 }
 
 /**
@@ -21,6 +24,7 @@ export async function runRerank(
   env: Env,
   provider: RerankProvider,
   retryOverrides?: Partial<RetryOptions>,
+  recorder?: RequestRecorder,
 ): Promise<RerankOutcome> {
   try {
     const body = await withRetry(
@@ -30,11 +34,12 @@ export async function runRerank(
       },
       {
         ...DEFAULT_RETRY,
-        onAttempt: (info) => logAttempt("rerank", provider.id, info),
+        onAttempt: (info) =>
+          recorder ? recorder.attempt(provider.id, info) : logAttempt("rerank", provider.id, info),
         ...retryOverrides,
       },
     );
-    return { kind: "ok", status: 200, body };
+    return { kind: "ok", status: 200, body, providerOk: provider.id };
   } catch (err) {
     return {
       kind: "failed",

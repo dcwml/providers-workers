@@ -3,6 +3,7 @@ import type { ProviderError } from "../errors";
 import type { Env } from "../env";
 import { logAttempt } from "../log";
 import { withRetry, type RetryOptions } from "../retry";
+import type { RequestRecorder } from "../telemetry";
 import type { EmbeddingsProvider, EmbeddingsRequest } from "./types";
 
 export interface EmbeddingsOutcome {
@@ -10,6 +11,8 @@ export interface EmbeddingsOutcome {
   status: number;
   body?: unknown;
   errors?: ProviderError[];
+  /** 成功时由哪家供应商提供（kind=ok 才有），供监控记录 */
+  providerOk?: string;
 }
 
 /**
@@ -21,6 +24,7 @@ export async function runEmbeddings(
   env: Env,
   provider: EmbeddingsProvider,
   retryOverrides?: Partial<RetryOptions>,
+  recorder?: RequestRecorder,
 ): Promise<EmbeddingsOutcome> {
   try {
     const body = await withRetry(
@@ -30,11 +34,14 @@ export async function runEmbeddings(
       },
       {
         ...DEFAULT_RETRY,
-        onAttempt: (info) => logAttempt("embeddings", provider.id, info),
+        onAttempt: (info) =>
+          recorder
+            ? recorder.attempt(provider.id, info)
+            : logAttempt("embeddings", provider.id, info),
         ...retryOverrides,
       },
     );
-    return { kind: "ok", status: 200, body };
+    return { kind: "ok", status: 200, body, providerOk: provider.id };
   } catch (err) {
     return {
       kind: "failed",

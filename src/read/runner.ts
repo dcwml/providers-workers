@@ -3,6 +3,7 @@ import type { ProviderError } from "../errors";
 import type { Env } from "../env";
 import { logAttempt } from "../log";
 import { withRetry, type RetryOptions } from "../retry";
+import type { RequestRecorder } from "../telemetry";
 import { firecrawl } from "./providers/firecrawl";
 import { jina } from "./providers/jina";
 import { tavily } from "./providers/tavily";
@@ -22,6 +23,8 @@ export interface ReadOutcome {
   status: number;
   markdown?: string;
   errors?: ProviderError[];
+  /** 成功时由哪家供应商提供（kind=ok 才有），供监控记录 */
+  providerOk?: string;
 }
 
 export async function runRead(
@@ -29,6 +32,7 @@ export async function runRead(
   env: Env,
   retryOverrides?: Partial<RetryOptions>,
   only?: ReaderProvider,
+  recorder?: RequestRecorder,
 ): Promise<ReadOutcome> {
   // ?provider= 覆盖：隔离只跑指定单家，不降级；缺省走固定链。
   const chain: readonly ReaderProvider[] = only ? [only] : READ_CHAIN;
@@ -43,11 +47,12 @@ export async function runRead(
         },
         {
           ...DEFAULT_RETRY,
-          onAttempt: (info) => logAttempt("read", provider.id, info),
+          onAttempt: (info) =>
+            recorder ? recorder.attempt(provider.id, info) : logAttempt("read", provider.id, info),
           ...retryOverrides,
         },
       );
-      return { kind: "ok", status: 200, markdown: result.markdown };
+      return { kind: "ok", status: 200, markdown: result.markdown, providerOk: provider.id };
     } catch (err) {
       errors.push({
         provider: provider.id,

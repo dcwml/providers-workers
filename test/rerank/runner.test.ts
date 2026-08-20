@@ -9,6 +9,8 @@ import {
 import { runRerank } from "../../src/rerank/runner";
 import type { RerankProvider, RerankResponse } from "../../src/rerank/types";
 import type { Env } from "../../src/env";
+import { INSERT_ATTEMPT_SQL, RequestRecorder } from "../../src/telemetry";
+import { makeFakeCtx, makeFakeD1 } from "../helpers";
 
 const env: Env = { AUTH_TOKENS: "" };
 const req = { model: "BAAI/bge-reranker-v2-m3", query: "q", documents: ["a", "b"] };
@@ -80,5 +82,21 @@ describe("runRerank", () => {
     const p = provider("p1", async () => ({ results: [{ index: 0, relevance_score: 0.9 }] }));
     await runRerank(req, env, p, fast);
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[rerank] provider=p1"));
+  });
+
+  it("records attempts via recorder and reports providerOk on success", async () => {
+    const d1 = makeFakeD1();
+    const c = makeFakeCtx();
+    const recorder = new RequestRecorder(c.ctx, d1.db, {
+      requestId: "r4", feature: "rerank", endpoint: "/v1/rerank", model: "BAAI/bge-reranker-v2-m3", tokenId: 1,
+    });
+    const p = provider("p1", async () => ({ results: [{ index: 0, relevance_score: 0.9 }] }));
+    const outcome = await runRerank(req, env, p, fast, recorder);
+    expect(outcome.kind).toBe("ok");
+    expect(outcome.providerOk).toBe("p1");
+    await Promise.all(c.promises);
+    const rows = d1.statements.filter((s) => s.sql === INSERT_ATTEMPT_SQL);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.params).toEqual(["r4", "rerank", "p1", "BAAI/bge-reranker-v2-m3", 1, "ok", expect.any(Number), null]);
   });
 });

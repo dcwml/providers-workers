@@ -3,6 +3,7 @@ import type { ProviderError } from "../errors";
 import type { Env } from "../env";
 import { logAttempt } from "../log";
 import { withRetry, type RetryOptions } from "../retry";
+import type { RequestRecorder } from "../telemetry";
 import { getChain } from "./chains";
 import type { ChatProvider, ChatRequest } from "./types";
 
@@ -11,6 +12,8 @@ export interface ChatOutcome {
   status: number;
   body?: unknown;
   errors?: ProviderError[];
+  /** 成功时由哪家供应商提供（kind=ok 才有），供监控记录 */
+  providerOk?: string;
 }
 
 export async function runChat(
@@ -18,6 +21,7 @@ export async function runChat(
   env: Env,
   retryOverrides?: Partial<RetryOptions>,
   only?: ChatProvider,
+  recorder?: RequestRecorder,
 ): Promise<ChatOutcome> {
   // ?provider= 覆盖：隔离只跑指定单家，不降级；缺省走 model 对应的链。
   const chain: readonly ChatProvider[] = only ? [only] : getChain(req.model);
@@ -32,11 +36,12 @@ export async function runChat(
         },
         {
           ...DEFAULT_RETRY,
-          onAttempt: (info) => logAttempt("chat", provider.id, info),
+          onAttempt: (info) =>
+            recorder ? recorder.attempt(provider.id, info) : logAttempt("chat", provider.id, info),
           ...retryOverrides,
         },
       );
-      return { kind: "ok", status: 200, body };
+      return { kind: "ok", status: 200, body, providerOk: provider.id };
     } catch (err) {
       errors.push({
         provider: provider.id,

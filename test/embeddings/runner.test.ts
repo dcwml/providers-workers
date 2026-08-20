@@ -9,6 +9,8 @@ import {
 import { runEmbeddings } from "../../src/embeddings/runner";
 import type { EmbeddingsProvider, EmbeddingsResponse } from "../../src/embeddings/types";
 import type { Env } from "../../src/env";
+import { INSERT_ATTEMPT_SQL, RequestRecorder } from "../../src/telemetry";
+import { makeFakeCtx, makeFakeD1 } from "../helpers";
 
 const env: Env = { AUTH_TOKENS: "" };
 const req = { model: "BAAI/bge-m3", input: "hi" };
@@ -80,5 +82,21 @@ describe("runEmbeddings", () => {
     const p = provider("p1", async () => ({ data: [{ embedding: [1] }] }));
     await runEmbeddings(req, env, p, fast);
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[embeddings] provider=p1"));
+  });
+
+  it("records attempts via recorder and reports providerOk on success", async () => {
+    const d1 = makeFakeD1();
+    const c = makeFakeCtx();
+    const recorder = new RequestRecorder(c.ctx, d1.db, {
+      requestId: "r3", feature: "embeddings", endpoint: "/v1/embeddings", model: "BAAI/bge-m3", tokenId: 1,
+    });
+    const p = provider("p1", async () => ({ data: [{ embedding: [1] }] }));
+    const outcome = await runEmbeddings(req, env, p, fast, recorder);
+    expect(outcome.kind).toBe("ok");
+    expect(outcome.providerOk).toBe("p1");
+    await Promise.all(c.promises);
+    const rows = d1.statements.filter((s) => s.sql === INSERT_ATTEMPT_SQL);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.params).toEqual(["r3", "embeddings", "p1", "BAAI/bge-m3", 1, "ok", expect.any(Number), null]);
   });
 });
