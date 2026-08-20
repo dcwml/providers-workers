@@ -9,7 +9,7 @@ import { sanitizeRequest } from "../sanitize";
 import type { ChatProvider, ChatResponse } from "../types";
 
 const BASE_URL = "https://api.siliconflow.cn/v1";
-const UPSTREAM_MODEL = "Qwen/Qwen3-8B";
+const UPSTREAM_MODEL = "Qwen/Qwen3.5-4B";
 const ENV_KEY = "SILICONFLOW_API_KEY";
 
 export const siliconflow: ChatProvider = {
