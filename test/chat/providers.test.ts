@@ -214,7 +214,7 @@ describe("zhipu", () => {
     expect(url).toBe("https://open.bigmodel.cn/api/paas/v4/chat/completions");
     const sent = JSON.parse(String(init.body));
     expect(sent.model).toBe("glm-4.7-flash"); // 改写为上游 model
-    expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } }); // capabilities 全 true（占位）→ 原样保留
+    expect(sent.response_format).toEqual({ type: "json_object" }); // jsonSchema 不支持（实测 2026-08-20）→ 降级 json_object
     expect(sent.tools).toEqual([{ type: "function" }]); // tools 支持 → 保留
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer zp-test");
   });
