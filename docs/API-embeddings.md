@@ -144,7 +144,7 @@ curl -X POST "https://api.oklapzlj.com/v1/embeddings" \
   -H "Authorization: Bearer $GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"model":"nope","input":"hi"}'
-# → 400 {"error":{"message":"model not found: nope; valid models: BAAI/bge-m3","type":"invalid_request_error","code":"model_not_found"}}
+# → 400 {"error":{"message":"model not found: nope; valid models: BAAI/bge-m3, jina-embeddings-v5-omni-small","type":"invalid_request_error","code":"model_not_found"}}
 
 # jina：检索场景显式 task（query 端）
 curl -X POST "https://api.oklapzlj.com/v1/embeddings" \
