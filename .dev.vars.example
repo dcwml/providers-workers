@@ -1,7 +1,9 @@
 # 复制为 .dev.vars 后填写（.dev.vars 已被 gitignore，勿提交真实密钥）
 # 生产环境用 wrangler secret put <KEY> 逐个配置
 
-AUTH_TOKENS=change-me-token-1,change-me-token-2
+# 管理后台密钥（保护 /admin/api/*）。本地 D1 初始化：npx wrangler d1 migrations apply providers_db --local
+# 网关调用 token 不在此配置——启动后经 /admin 后台管理（存 D1）。
+ADMIN_TOKEN=change-me-admin
 
 # chat 供应商（每个 provider 文件声明自己读哪个变量）
 # 注：SILICONFLOW_API_KEY 同时供 embeddings 供应商（上游模型 BAAI/bge-m3）

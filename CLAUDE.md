@@ -14,7 +14,7 @@ npm test             # vitest 全量单测（上游全部 mock）
 npm run typecheck    # tsc --noEmit
 npx vitest run test/chat/runner.test.ts   # 运行单个测试文件
 npm run probe -- openrouter   # 实测某 chat provider 的四项能力（发真实请求）
-npx tsx scripts/serve.ts      # 备用本地服务：Node 直跑 worker handler，不依赖 wrangler（默认 8787，PORT 可覆盖）
+npx tsx scripts/serve.ts      # 备用本地服务（D1 改造后鉴权路径不可用，本地联调优先 npm run dev）
 npm run deploy       # wrangler deploy（发布前建议先 wrangler deploy --dry-run）
 ```
 
@@ -24,7 +24,7 @@ npm run deploy       # wrangler deploy（发布前建议先 wrangler deploy --dr
 
 ## 架构
 
-请求流：`src/index.ts` 路由 → auth 校验（`src/auth.ts`，Bearer token 匹配 `AUTH_TOKENS`）→ runner。
+请求流：`src/index.ts` 路由（业务端点 + `/admin` 管理后台）→ auth 校验（`src/auth.ts`，Bearer token 的 SHA-256 查 D1 `tokens` 表，库 `providers_db`）→ runner。每次调用与每次上游尝试经 `src/telemetry.ts`（RequestRecorder，waitUntil 异步）落 D1 监控，查询集见 `docs/monitoring-sql.md`。
 
 两条对称的执行管线，模式相同（runner 按链顺序遍历供应商，每家用 `withRetry` 包裹，失败换下一家，全链失败返回 502 附各家错误明细）：
 

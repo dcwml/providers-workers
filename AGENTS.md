@@ -10,6 +10,8 @@ npm run typecheck   # tsc --noEmit，必须干净
 npm run probe -- <providerId>  # 实测 chat 供应商四项能力（发真实上游请求，密钥取自根目录 .dev.vars）
 npm run dev         # wrangler dev 本地联调（需先配 .dev.vars）
 npm run deploy      # 发布前建议先 npx wrangler deploy --dry-run
+npx wrangler d1 migrations apply providers_db --local    # 本地 D1 迁移（生产用 --remote，见部署 Runbook）
+npx wrangler d1 execute providers_db --remote --command "SELECT ..."   # 查监控数据（查询集见 docs/monitoring-sql.md）
 ```
 
 改动后最低验收：`npm run typecheck && npm test` 全绿。
@@ -24,13 +26,17 @@ npm run deploy      # 发布前建议先 npx wrangler deploy --dry-run
 
 ```
 src/
-  index.ts        # 入口：路由 + 鉴权守卫 + 错误矩阵（401/400/404/502）
+  index.ts        # 入口：路由（业务 + /admin）+ 鉴权（D1 tokens 表）+ 错误矩阵（401/400/404/500/502）+ 请求级监控
   auth.ts         # Bearer 鉴权（AUTH_TOKENS 逗号分隔，常量时间比较）
   config.ts       # UPSTREAM_TIMEOUT_MS=30s、DEFAULT_RETRY={3次,1s}
-  env.ts          # Env 类型（AUTH_TOKENS 必填，供应商 key 可选）
+  env.ts          # Env 类型（ADMIN_TOKEN 可选，供应商 key 可选）+ WorkerEnv（含 DB: D1Database binding）
   errors.ts       # RetryableError/NonRetryableError/classifyHttpStatus/classifyNetworkError
   retry.ts        # withRetry：仅重试 RetryableError
   log.ts          # logAttempt：结构化尝试日志
+  telemetry.ts    # RequestRecorder：requests/provider_attempts 落库（waitUntil 异步，失败仅 warn）
+  admin.ts        # /admin/api/* token 管理 API（Bearer ADMIN_TOKEN）
+  admin-page.ts   # /admin 静态管理页（无数据登录壳）
+migrations/       # D1 schema 迁移（wrangler d1 migrations）
   chat/           # types / sanitize（能力裁剪）/ chains（model→链）/ runner / providers/
   embeddings/     # types / models（model→单 provider，无链）/ runner / providers/
   rerank/         # types / models（model→单 provider，无链）/ runner / providers/
@@ -65,7 +71,9 @@ src/
 ## 密钥与环境变量
 
 - 本地：`.dev.vars`（已 gitignore，**严禁提交真实密钥**），模板见 `.dev.vars.example`。
-- 生产：`wrangler secret put <KEY>`。
+- 生产：`wrangler secret put <KEY>`。**生产所有变量一律用 secret**（勿在 dashboard 配明文 var——git push 自动部署会清掉未声明的明文 var）。
+- 网关调用 token：存 D1 `tokens` 表（SHA-256 哈希），经 `/admin` 后台管理（登录密钥 `ADMIN_TOKEN` secret）；禁用立即生效，无需重新部署。
+- `ADMIN_TOKEN` 未配置时 `/admin/api/*` 返回 404（`/admin` 本身是不含数据的静态登录壳，照常返回），业务接口不受影响。
 - 供应商 key 一律可选：缺 key 的供应商按 `NonRetryableError` 快速跳过换下家，不要改成启动时报错。
 
 ## 测试约定
@@ -73,6 +81,7 @@ src/
 - vitest，上游 fetch 全部 mock（`vi.stubGlobal`/`vi.mock`），**测试中不得出现真实网络调用**。
 - 测试断言真实行为（请求 URL/header/body、状态码、响应体），不要只断言 mock 被调用。
 - 新增供应商：覆盖缺 key、网络错、可重试/不可重试状态码、非 JSON、空内容、成功提取这几条路径。
+- D1 相关测试用 `test/helpers.ts` 的 `makeFakeD1()`（可 stub rows/run meta/注入故障）与 `makeFakeCtx()`（收集 waitUntil promise），不依赖真实 D1。
 
 ## 新增一个 chat 供应商（checklist）
 

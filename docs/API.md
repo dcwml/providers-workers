@@ -13,10 +13,11 @@
 | POST | `/v1/embeddings` | OpenAI 兼容 embeddings。按 `model` 映射到单个 provider，无链、无降级。当前：`BAAI/bge-m3` → siliconflow。 | [API-embeddings.md](./API-embeddings.md) |
 | POST | `/v1/rerank` | 文档重排序。按 `model` 映射到单个 provider，无链、无降级。当前：`BAAI/bge-reranker-v2-m3` → siliconflow。 | [API-rerank.md](./API-rerank.md) |
 | POST | `/v1/read` | 给一个 URL，返回网页正文 Markdown。供应商链固定：jina → tavily → firecrawl。 | [API-read.md](./API-read.md) |
+| GET | `/admin` | 管理后台页面（token 管理）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`，非业务端点。 | — |
 
 ## 通用约定
 
-**鉴权**：所有请求必须携带 `Authorization: Bearer <token>`，token 由管理员下发（服务端可配置多个）。缺失或错误返回 `401 {"error":{"message":"unauthorized"}}`。
+**鉴权**：所有请求必须携带 `Authorization: Bearer <token>`，token 由管理员经 /admin 后台创建与停用（存 D1，管理密钥为 ADMIN_TOKEN secret）。缺失或错误返回 `401 {"error":{"message":"unauthorized"}}`。
 
 **供应商隔离参数**：所有接口支持 URL 追加 `?provider=<id>` 强制只跑指定的一家（不做降级），用于排查单家供应商问题；未知取值返回 400 并列出合法 id。正常业务调用不要带此参数。
 
@@ -41,3 +42,4 @@
 - `README.md`：端点速览、本地开发、密钥配置表、部署命令
 - `AGENTS.md`：项目工作手册（代码层约定，面向开发者）
 - `docs/superpowers/reports/`：各次实现/探测的过程记录
+- `docs/monitoring-sql.md`：监控数据（requests / provider_attempts）常用 SQL 统计查询

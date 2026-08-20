@@ -10,8 +10,9 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 | POST | `/v1/read` | body `{"url": "https://..."}`，返回页面 Markdown 正文（`text/markdown`）。供应商链固定：jina → tavily → firecrawl。 |
 | POST | `/v1/embeddings` | OpenAI 兼容 embeddings。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-m3` → siliconflow。 |
 | POST | `/v1/rerank` | 文档重排序（Jina/Cohere 风格：`query` + `documents`，可选 `top_n`/`return_documents`）。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-reranker-v2-m3` → siliconflow。 |
+| GET | `/admin` | 管理后台（token 管理：新建/启停/删除，自动生成随机串）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`。 |
 
-所有端点要求 `Authorization: Bearer <token>`。
+业务端点要求 `Authorization: Bearer <token>`；token 由管理员在 `/admin` 后台创建与停用（存 D1，无需重新部署）。
 
 ## 重试与降级策略
 
@@ -24,7 +25,8 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # 填入真实密钥
+cp .dev.vars.example .dev.vars   # 填入真实密钥（ADMIN_TOKEN 必填，供应商 key 可选）
+npx wrangler d1 migrations apply providers_db --local   # 初始化本地 D1（tokens/requests/provider_attempts）
 npm run dev                      # wrangler dev 本地启动
 ```
 
@@ -58,7 +60,7 @@ curl -s http://localhost:8787/v1/rerank \
 
 | 变量 | 用途 |
 | --- | --- |
-| `AUTH_TOKENS` | 网关访问 token，逗号分隔可多个 |
+| `ADMIN_TOKEN` | 管理后台密钥（保护 `/admin/api/*`）；网关调用 token 在 `/admin` 后台管理（存 D1） |
 | `OPENROUTER_API_KEY` | chat 示例供应商 openrouter |
 | `DEEPSEEK_API_KEY` | chat 示例供应商 deepseek-official |
 | `SILICONFLOW_API_KEY` | chat 供应商 siliconflow（上游模型 Qwen/Qwen3-8B）；embeddings 供应商 siliconflow（上游模型 BAAI/bge-m3）；rerank 供应商 siliconflow（上游模型 BAAI/bge-reranker-v2-m3） |
