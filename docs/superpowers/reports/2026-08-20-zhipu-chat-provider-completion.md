@@ -73,6 +73,32 @@ probe 单次直连无重试（单次上限 30s），瞬时限流即 inconclusive
 - `test/chat/providers.test.ts`：成功路径断言按「jsonSchema=false 且 jsonObject=true」分支调整——`sent.response_format` 断言从原样保留 json_schema 改为降级后的 `{"type":"json_object"}`。
 - 验证：`npm run typecheck` 干净；`npx vitest run test/chat/providers.test.ts test/chat/chains.test.ts` 28/28；全量 `npm test` 18 文件 198/198 全绿。
 
-## 上线记录（Task 4 补全）
+## 交付物
 
-（待 Task 4：链位与降级顺序、README 配置、生产 secret 步骤、冒烟与运维备注。）
+分支 `zhipu-chat-provider`（基于 master @ `1527f0f`），共 5 个提交：
+
+- `c4425f6` test: sync siliconflow assertion and README model name with c344005（Task 1 基线修复）
+  - `test/chat/providers.test.ts`、`README.md`：siliconflow 断言与配置表中的 chat 上游模型名同步为 `Qwen/Qwen3.5-4B`（对齐 c344005 的 provider 实际值）
+- `5e8302c` feat: add zhipu chat provider with glm-4.7-flash chain（Task 2，TDD：先测试 RED 再实现 GREEN）
+  - `src/chat/providers/zhipu.ts`（新供应商，自包含：BASE_URL `https://open.bigmodel.cn/api/paas/v4`、UPSTREAM_MODEL `glm-4.7-flash`、ENV_KEY `ZHIPU_API_KEY`）
+  - `src/env.ts`（`Env` 增加 `ZHIPU_API_KEY?: string`）
+  - `src/chat/chains.ts`（新逻辑链 `"glm-4.7-flash": [zhipu, agnes, gptsapi]`——zhipu 首位，降级顺序 agnes → gptsapi）
+  - `test/chat/providers.test.ts`（+6：缺 key、网络错、429 可重试、400 不可重试、非 JSON、成功提取）、`test/chat/chains.test.ts`（+1 链映射断言）
+- `feaded3` feat: calibrate zhipu capabilities from live probe（Task 3）
+  - `src/chat/providers/zhipu.ts`（capabilities 实测终值 + 逐项验证注释）、`test/chat/providers.test.ts`（成功路径断言改为 json_object 降级）、本报告初稿（probe 实测结论全节）
+- `f8b545c` docs: correct tools retest attempt log in zhipu probe report（Task 3 纠错：复测尝试记录表述修正）
+- 本提交 docs: add zhipu config docs, fix provider checklist order, complete report（Task 4）
+  - `.dev.vars.example`（chat 段补 `ZHIPU_API_KEY=`）、`README.md`（配置表补 zhipu 行）、`AGENTS.md`（新增 chat 供应商 checklist 步骤 2/3 对调：chains 注册先于 probe，因 `scripts/probe.ts` 从 CHAINS 按 id 解析供应商，原顺序不可执行）、本报告补全
+
+## 验收结果
+
+- `npm run typecheck`：干净（`tsc --noEmit` 无输出，exit 0）。
+- `npm test`：**18 文件 198/198 全绿**（191 基线 + zhipu 供应商 6 + 链 1），无失败、无跳过。
+- 测试中上游 fetch 全部 mock，无真实网络调用；分支仅在本地，未 push。
+
+## 遗留与后续
+
+1. **生产部署**（用户执行，本分支未 push）：`wrangler secret put ZHIPU_API_KEY` 后 git push 自动部署，线上用 `?provider=zhipu` 做隔离验证。
+2. **README 配置表缺 `AGNES_API_KEY` 行**（既有遗漏，早于本分支，本任务未修）。
+3. **`chains.ts` 逻辑 model 键名 `"Qwen/Qwen3-8B"` 与上游实际模型 `Qwen/Qwen3.5-4B` 键名不一致**（c344005 现状，spec 范围外，保持不动）。
+4. **运维观察项**：glm-4.7-flash 默认思考模式单次实测 38–49s，超网关 `UPSTREAM_TIMEOUT_MS`=30s——默认请求单次尝试大概率超时（超时属 RetryableError，供应商内部重试耗尽后降级到链上下家 agnes，整体延迟偏高）；调用方显式传 `thinking: {"type":"disabled"}` 可透传生效（`sanitizeRequest` 仅裁剪 tools/response_format/system，零注入设计，网关不代为注入）；`reasoning_content` 约占响应体积 95%，生产 token 用量与响应体积需关注。

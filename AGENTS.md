@@ -86,8 +86,8 @@ migrations/       # D1 schema 迁移（wrangler d1 migrations）
 ## 新增一个 chat 供应商（checklist）
 
 1. `src/chat/providers/` 新建文件，仿照 `openrouter.ts`（自包含：BASE_URL/UPSTREAM_MODEL/ENV_KEY/capabilities/chat）。
-2. `npm run probe -- <providerId>` 实测四项能力（systemPrompt/tools/jsonObject/jsonSchema），按输出建议校准 `capabilities`——**能力声明必须实测确认，不得凭文档或推断写入**。注意：探测单次上限 30s，慢模型（如默认开思考模式的 Qwen3）易超时得 inconclusive，须用 curl 放宽超时复测；json_schema 要用与提示词无关的严格 schema 做判别测试，确认是真执行而非被忽略。
-3. `src/chat/chains.ts` 相应链中按降级顺序插入。
+2. `src/chat/chains.ts` 相应链中按降级顺序插入（probe 依赖 chains 注册：`scripts/probe.ts` 从 CHAINS 按 id 解析供应商）。
+3. `npm run probe -- <providerId>` 实测四项能力（systemPrompt/tools/jsonObject/jsonSchema），按输出建议校准 `capabilities`——**能力声明必须实测确认，不得凭文档或推断写入**。注意：探测单次上限 30s，慢模型（如默认开思考模式的 Qwen3）易超时得 inconclusive，须用 curl 放宽超时复测；json_schema 要用与提示词无关的严格 schema 做判别测试，确认是真执行而非被忽略。
 4. `.dev.vars.example` 与生产 secret 补 key；`README.md` 配置表补一行。
 5. 测试按上节约定补齐；`npm run typecheck && npm test` 全绿后提交。
 
