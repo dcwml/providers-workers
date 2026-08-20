@@ -5,7 +5,8 @@ import type { ReadOutcome } from "../src/read/runner";
 import type { RerankOutcome } from "../src/rerank/runner";
 import { TOKEN_LOOKUP_SQL } from "../src/auth";
 import type { WorkerEnv } from "../src/env";
-import { makeFakeD1 } from "./helpers";
+import { INSERT_REQUEST_SQL } from "../src/telemetry";
+import { makeFakeCtx, makeFakeD1 } from "./helpers";
 
 const state = vi.hoisted(() => ({
   chatOutcome: undefined as unknown as ChatOutcome,
@@ -67,10 +68,10 @@ function post(path: string, body: unknown, token?: string): Request {
 }
 
 beforeEach(() => {
-  state.chatOutcome = { kind: "ok", status: 200, body: { id: "default" } };
-  state.readOutcome = { kind: "ok", status: 200, markdown: "# default" };
-  state.embeddingsOutcome = { kind: "ok", status: 200, body: { data: [] } };
-  state.rerankOutcome = { kind: "ok", status: 200, body: { results: [] } };
+  state.chatOutcome = { kind: "ok", status: 200, body: { id: "default" }, providerOk: "p-default" };
+  state.readOutcome = { kind: "ok", status: 200, markdown: "# default", providerOk: "p-default" };
+  state.embeddingsOutcome = { kind: "ok", status: 200, body: { data: [] }, providerOk: "p-default" };
+  state.rerankOutcome = { kind: "ok", status: 200, body: { results: [] }, providerOk: "p-default" };
   state.chatOnly = undefined;
   state.readOnly = undefined;
   state.embeddingsProvider = undefined;
@@ -83,7 +84,7 @@ describe("auth", () => {
       method: "POST",
       body: JSON.stringify({ url: "https://example.com" }),
     });
-    const res = await handler.fetch(req, env);
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
     expect(res.status).toBe(401);
   });
 
@@ -93,7 +94,7 @@ describe("auth", () => {
       headers: { authorization: "Bearer wrong" },
       body: "not json",
     });
-    const res = await handler.fetch(req, makeEnv([]));
+    const res = await handler.fetch(req, makeEnv([]), makeFakeCtx().ctx);
     expect(res.status).toBe(401);
   });
 
@@ -101,7 +102,11 @@ describe("auth", () => {
     const fake = makeFakeD1();
     fake.failOnSubstring(TOKEN_LOOKUP_SQL);
     const envDown: WorkerEnv = { DB: fake.db } as WorkerEnv;
-    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), envDown);
+    const res = await handler.fetch(
+      post("/v1/read", { url: "https://example.com" }),
+      envDown,
+      makeFakeCtx().ctx,
+    );
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({
       error: { message: "auth store unavailable", type: "server_error", code: "auth_store_error" },
@@ -111,7 +116,7 @@ describe("auth", () => {
 
 describe("routing", () => {
   it("returns 404 for unknown path", async () => {
-    const res = await handler.fetch(post("/nope", {}), env);
+    const res = await handler.fetch(post("/nope", {}), env, makeFakeCtx().ctx);
     expect(res.status).toBe(404);
   });
 
@@ -119,7 +124,7 @@ describe("routing", () => {
     const req = new Request("https://gw.example/v1/read", {
       headers: { authorization: "Bearer sekret" },
     });
-    const res = await handler.fetch(req, env);
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
     expect(res.status).toBe(404);
   });
 });
@@ -130,6 +135,7 @@ describe("chat endpoint", () => {
     const res = await handler.fetch(
       post("/v1/chat/completions", { model: "sample-chat", messages: [{ role: "user", content: "hi" }] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
@@ -142,7 +148,7 @@ describe("chat endpoint", () => {
       headers: { authorization: "Bearer sekret" },
       body: "not json",
     });
-    const res = await handler.fetch(req, env);
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
@@ -152,7 +158,7 @@ describe("chat endpoint", () => {
       headers: { authorization: "Bearer sekret" },
       body: "null",
     });
-    const res = await handler.fetch(req, env);
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
@@ -160,6 +166,7 @@ describe("chat endpoint", () => {
     const res = await handler.fetch(
       post("/v1/chat/completions", { messages: [{ role: "user", content: "hi" }] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
   });
@@ -172,6 +179,7 @@ describe("chat endpoint", () => {
         stream: true,
       }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
   });
@@ -185,6 +193,7 @@ describe("chat endpoint", () => {
     const res = await handler.fetch(
       post("/v1/chat/completions", { model: "sample-chat", messages: [{ role: "user", content: "hi" }] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(502);
     const body = (await res.json()) as { error: { provider_errors: unknown[] } };
@@ -195,24 +204,24 @@ describe("chat endpoint", () => {
 describe("read endpoint", () => {
   it("returns markdown with text/markdown content type", async () => {
     state.readOutcome = { kind: "ok", status: 200, markdown: "# hi" };
-    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env);
+    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env, makeFakeCtx().ctx);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
     expect(await res.text()).toBe("# hi");
   });
 
   it("rejects non-http url with 400", async () => {
-    const res = await handler.fetch(post("/v1/read", { url: "ftp://example.com" }), env);
+    const res = await handler.fetch(post("/v1/read", { url: "ftp://example.com" }), env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
   it("rejects missing url with 400", async () => {
-    const res = await handler.fetch(post("/v1/read", {}), env);
+    const res = await handler.fetch(post("/v1/read", {}), env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
   it("rejects a valid JSON null body with 400", async () => {
-    const res = await handler.fetch(post("/v1/read", null), env);
+    const res = await handler.fetch(post("/v1/read", null), env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
@@ -222,7 +231,7 @@ describe("read endpoint", () => {
       status: 502,
       errors: [{ provider: "jina", message: "dead" }],
     };
-    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env);
+    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env, makeFakeCtx().ctx);
     expect(res.status).toBe(502);
   });
 });
@@ -236,7 +245,7 @@ describe("embeddings endpoint", () => {
       status: 200,
       body: { object: "list", data: [{ embedding: [0.1] }] },
     };
-    const res = await handler.fetch(post("/v1/embeddings", validBody), env);
+    const res = await handler.fetch(post("/v1/embeddings", validBody), env, makeFakeCtx().ctx);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toEqual({ object: "list", data: [{ embedding: [0.1] }] });
@@ -248,22 +257,22 @@ describe("embeddings endpoint", () => {
       headers: { authorization: "Bearer sekret" },
       body: "not json",
     });
-    const res = await handler.fetch(req, env);
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
   it("rejects a valid JSON null body with 400", async () => {
-    const res = await handler.fetch(post("/v1/embeddings", null), env);
+    const res = await handler.fetch(post("/v1/embeddings", null), env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
   it("rejects missing model with 400", async () => {
-    const res = await handler.fetch(post("/v1/embeddings", { input: "hi" }), env);
+    const res = await handler.fetch(post("/v1/embeddings", { input: "hi" }), env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
   it("rejects missing input with 400", async () => {
-    const res = await handler.fetch(post("/v1/embeddings", { model: "BAAI/bge-m3" }), env);
+    const res = await handler.fetch(post("/v1/embeddings", { model: "BAAI/bge-m3" }), env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
@@ -271,11 +280,13 @@ describe("embeddings endpoint", () => {
     const res1 = await handler.fetch(
       post("/v1/embeddings", { model: "BAAI/bge-m3", input: "" }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res1.status).toBe(400);
     const res2 = await handler.fetch(
       post("/v1/embeddings", { model: "BAAI/bge-m3", input: [] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res2.status).toBe(400);
   });
@@ -284,6 +295,7 @@ describe("embeddings endpoint", () => {
     const res = await handler.fetch(
       post("/v1/embeddings", { model: "nope", input: "hi" }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { code: string; message: string } };
@@ -298,7 +310,7 @@ describe("embeddings endpoint", () => {
       status: 502,
       errors: [{ provider: "siliconflow", message: "dead" }],
     };
-    const res = await handler.fetch(post("/v1/embeddings", validBody), env);
+    const res = await handler.fetch(post("/v1/embeddings", validBody), env, makeFakeCtx().ctx);
     expect(res.status).toBe(502);
     const body = (await res.json()) as {
       error: { code: string; provider_errors: unknown[] };
@@ -321,7 +333,7 @@ describe("rerank endpoint", () => {
       status: 200,
       body: { id: "x", results: [{ index: 0, relevance_score: 0.9 }] },
     };
-    const res = await handler.fetch(post("/v1/rerank", validBody), env);
+    const res = await handler.fetch(post("/v1/rerank", validBody), env, makeFakeCtx().ctx);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toEqual({
@@ -336,12 +348,12 @@ describe("rerank endpoint", () => {
       headers: { authorization: "Bearer sekret" },
       body: "not json",
     });
-    const res = await handler.fetch(req, env);
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
   it("rejects a valid JSON null body with 400", async () => {
-    const res = await handler.fetch(post("/v1/rerank", null), env);
+    const res = await handler.fetch(post("/v1/rerank", null), env, makeFakeCtx().ctx);
     expect(res.status).toBe(400);
   });
 
@@ -349,6 +361,7 @@ describe("rerank endpoint", () => {
     const res = await handler.fetch(
       post("/v1/rerank", { query: "q", documents: ["a"] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
   });
@@ -357,21 +370,25 @@ describe("rerank endpoint", () => {
     const noQuery = await handler.fetch(
       post("/v1/rerank", { model: "BAAI/bge-reranker-v2-m3", documents: ["a"] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(noQuery.status).toBe(400);
     const emptyQuery = await handler.fetch(
       post("/v1/rerank", { model: "BAAI/bge-reranker-v2-m3", query: "", documents: ["a"] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(emptyQuery.status).toBe(400);
     const noDocs = await handler.fetch(
       post("/v1/rerank", { model: "BAAI/bge-reranker-v2-m3", query: "q" }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(noDocs.status).toBe(400);
     const emptyDocs = await handler.fetch(
       post("/v1/rerank", { model: "BAAI/bge-reranker-v2-m3", query: "q", documents: [] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(emptyDocs.status).toBe(400);
   });
@@ -380,6 +397,7 @@ describe("rerank endpoint", () => {
     const res = await handler.fetch(
       post("/v1/rerank", { model: "nope", query: "q", documents: ["a"] }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { code: string; message: string } };
@@ -394,7 +412,7 @@ describe("rerank endpoint", () => {
       status: 502,
       errors: [{ provider: "siliconflow", message: "dead" }],
     };
-    const res = await handler.fetch(post("/v1/rerank", validBody), env);
+    const res = await handler.fetch(post("/v1/rerank", validBody), env, makeFakeCtx().ctx);
     expect(res.status).toBe(502);
     const body = (await res.json()) as {
       error: { code: string; provider_errors: unknown[] };
@@ -409,13 +427,14 @@ describe("provider override (?provider=)", () => {
     const res = await handler.fetch(
       post("/v1/read?provider=firecrawl", { url: "https://example.com" }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(200);
     expect(state.readOnly).toEqual({ id: "firecrawl" });
   });
 
   it("read: no provider param leaves override undefined", async () => {
-    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env);
+    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env, makeFakeCtx().ctx);
     expect(res.status).toBe(200);
     expect(state.readOnly).toBeUndefined();
   });
@@ -424,6 +443,7 @@ describe("provider override (?provider=)", () => {
     const res = await handler.fetch(
       post("/v1/read?provider=bogus", { url: "https://example.com" }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { message: string } };
@@ -438,6 +458,7 @@ describe("provider override (?provider=)", () => {
         messages: [{ role: "user", content: "hi" }],
       }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(200);
     expect((state.chatOnly as { id: string }).id).toBe("gptsapi");
@@ -450,6 +471,7 @@ describe("provider override (?provider=)", () => {
         messages: [{ role: "user", content: "hi" }],
       }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { code: string; message: string } };
@@ -461,6 +483,7 @@ describe("provider override (?provider=)", () => {
     const res = await handler.fetch(
       post("/v1/embeddings?provider=siliconflow", { model: "BAAI/bge-m3", input: "hi" }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(200);
     expect((state.embeddingsProvider as { id: string }).id).toBe("siliconflow");
@@ -470,6 +493,7 @@ describe("provider override (?provider=)", () => {
     const res = await handler.fetch(
       post("/v1/embeddings?provider=bogus", { model: "BAAI/bge-m3", input: "hi" }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { code: string; message: string } };
@@ -486,6 +510,7 @@ describe("provider override (?provider=)", () => {
         documents: ["a"],
       }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(200);
     expect((state.rerankProvider as { id: string }).id).toBe("siliconflow");
@@ -499,11 +524,71 @@ describe("provider override (?provider=)", () => {
         documents: ["a"],
       }),
       env,
+      makeFakeCtx().ctx,
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe("unknown_provider");
     expect(body.error.message).toContain("unknown provider: bogus");
     expect(body.error.message).toContain("siliconflow");
+  });
+});
+
+describe("telemetry", () => {
+  it("records one requests row per authorized call with final status and providerOk", async () => {
+    const d1 = makeFakeD1();
+    d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 3 }]);
+    const c = makeFakeCtx();
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
+    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), envReq, c.ctx);
+    expect(res.status).toBe(200);
+    await Promise.all(c.promises);
+    const row = d1.statements.find((s) => s.sql === INSERT_REQUEST_SQL);
+    expect(row?.params[1]).toBe("read");
+    expect(row?.params[3]).toBe("");
+    expect(row?.params[4]).toBe(3);
+    expect(row?.params[5]).toBe(200);
+    expect(row?.params[6]).toBe("p-default");
+    expect(typeof row?.params[7]).toBe("number");
+  });
+
+  it("records model for chat after body validation", async () => {
+    const d1 = makeFakeD1();
+    d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 3 }]);
+    const c = makeFakeCtx();
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
+    await handler.fetch(
+      post("/v1/chat/completions", { model: "m1", messages: [{ role: "user", content: "hi" }] }),
+      envReq,
+      c.ctx,
+    );
+    await Promise.all(c.promises);
+    const row = d1.statements.find((s) => s.sql === INSERT_REQUEST_SQL);
+    expect(row?.params[2]).toBe("/v1/chat/completions");
+    expect(row?.params[3]).toBe("m1");
+  });
+
+  it("records a 401 row for unauthorized calls (token_id NULL, no attempts)", async () => {
+    const d1 = makeFakeD1();
+    const c = makeFakeCtx();
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
+    const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }, "wrong"), envReq, c.ctx);
+    expect(res.status).toBe(401);
+    await Promise.all(c.promises);
+    const row = d1.statements.find((s) => s.sql === INSERT_REQUEST_SQL);
+    expect(row?.params[4]).toBeNull();
+    expect(row?.params[5]).toBe(401);
+  });
+
+  it("records a requests row for validation 400s too", async () => {
+    const d1 = makeFakeD1();
+    d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 3 }]);
+    const c = makeFakeCtx();
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
+    const res = await handler.fetch(post("/v1/read", { url: "not-a-url" }), envReq, c.ctx);
+    expect(res.status).toBe(400);
+    await Promise.all(c.promises);
+    const row = d1.statements.find((s) => s.sql === INSERT_REQUEST_SQL);
+    expect(row?.params[5]).toBe(400);
   });
 });
