@@ -592,3 +592,39 @@ describe("telemetry", () => {
     expect(row?.params[5]).toBe(400);
   });
 });
+
+describe("admin page routing", () => {
+  it("serves the static shell for GET /admin without auth", async () => {
+    const res = await handler.fetch(
+      new Request("https://gw.example/admin"),
+      makeEnv(),
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("admin_token"); // 登录逻辑存在
+    expect(html).toContain("noindex"); // 不被搜索引擎收录
+    expect(html).not.toContain("sk-"); // 壳内不含任何数据/密钥
+  });
+
+  it("routes /admin/api/* through handleAdminApi (401 without bearer)", async () => {
+    const envAdmin = makeEnv();
+    envAdmin.ADMIN_TOKEN = "admin-secret";
+    const res = await handler.fetch(
+      new Request("https://gw.example/admin/api/tokens"),
+      envAdmin,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for GET on unknown admin path", async () => {
+    const res = await handler.fetch(
+      new Request("https://gw.example/admin/nope"),
+      makeEnv(),
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(404);
+  });
+});

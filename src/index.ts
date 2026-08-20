@@ -1,4 +1,5 @@
 import { authorize } from "./auth";
+import { ADMIN_PAGE_HTML } from "./admin-page";
 import { handleAdminApi } from "./admin";
 import { CHAT_PROVIDER_IDS, getChatProviderById } from "./chat/chains";
 import { runChat } from "./chat/runner";
@@ -395,6 +396,11 @@ async function handleRerank(
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/admin") {
+      return new Response(ADMIN_PAGE_HTML, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
     if (url.pathname.startsWith("/admin/api/")) return handleAdminApi(request, env);
     if (request.method === "POST") {
       const providerParam = url.searchParams.get("provider");
