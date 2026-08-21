@@ -71,6 +71,7 @@ curl -s http://localhost:8787/v1/rerank \
 | 变量 | 用途 |
 | --- | --- |
 | `ADMIN_TOKEN` | 管理后台密钥（保护 `/admin/api/*`）；网关调用 token 在 `/admin` 后台管理（存 D1） |
+| `AGNES_API_KEY` | chat 供应商 agnes（上游模型 agnes-2.0-flash；未注册 model 的回落链也走它） |
 | `OPENROUTER_API_KEY` | chat 示例供应商 openrouter |
 | `DEEPSEEK_API_KEY` | chat 示例供应商 deepseek-official |
 | `SILICONFLOW_API_KEY` | chat 供应商 siliconflow（上游模型 Qwen/Qwen3.5-4B）；embeddings 供应商 siliconflow（上游模型 BAAI/bge-m3）；rerank 供应商 siliconflow（上游模型 BAAI/bge-reranker-v2-m3） |

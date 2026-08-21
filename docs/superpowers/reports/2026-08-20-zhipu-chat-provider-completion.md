@@ -98,7 +98,7 @@ probe 单次直连无重试（单次上限 30s），瞬时限流即 inconclusive
 
 ## 遗留与后续
 
-1. **生产部署**（用户执行，本分支未 push）：`wrangler secret put ZHIPU_API_KEY` 后 git push 自动部署，线上用 `?provider=zhipu` 做隔离验证。
-2. **README 配置表缺 `AGNES_API_KEY` 行**（既有遗漏，早于本分支，本任务未修）。
+1. **生产部署与线上验证（2026-08-21 已完成）**：`ZHIPU_API_KEY` 生产 secret 已配置（用户操作），git push（df08b58..bb73a16）自动部署成功。线上实测：`glm-4.7-flash` + `thinking: {"type":"disabled"}` → 200，`model` 透传 `glm-4.7-flash`；`?provider=zhipu` 隔离路径 → 200。另观察到上游 429（code 1305 访问量过大）时按设计重试 2 次后降级 agnes，`provider_attempts` 监控表逐次落库正确。
+2. **README 配置表缺 `AGNES_API_KEY` 行**（既有遗漏，早于本分支，2026-08-21 已随文档对齐补上）。
 3. **`chains.ts` 逻辑 model 键名 `"Qwen/Qwen3-8B"` 与上游实际模型 `Qwen/Qwen3.5-4B` 键名不一致**（c344005 现状，spec 范围外，保持不动）。
 4. **运维观察项**：glm-4.7-flash 默认思考模式单次实测 38–49s，超网关 `UPSTREAM_TIMEOUT_MS`=30s——默认请求单次尝试大概率超时（超时属 RetryableError，供应商内部重试耗尽后降级到链上下家 agnes，整体延迟偏高）；调用方显式传 `thinking: {"type":"disabled"}` 可透传生效（`sanitizeRequest` 仅裁剪 tools/response_format/system，零注入设计，网关不代为注入）；`reasoning_content` 约占响应体积 95%，生产 token 用量与响应体积需关注。
