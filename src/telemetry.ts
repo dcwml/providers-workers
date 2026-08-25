@@ -2,7 +2,7 @@ import type { D1Database, ExecutionContext } from "@cloudflare/workers-types";
 import { logAttempt } from "./log";
 import type { AttemptInfo } from "./retry";
 
-export type Feature = "chat" | "read" | "embeddings" | "rerank";
+export type Feature = "chat" | "read" | "embeddings" | "rerank" | "email";
 
 export interface RecorderMeta {
   requestId: string;
@@ -23,6 +23,7 @@ export function featureFromEndpoint(endpoint: string): Feature {
   if (endpoint.startsWith("/v1/chat")) return "chat";
   if (endpoint.startsWith("/v1/embeddings")) return "embeddings";
   if (endpoint.startsWith("/v1/rerank")) return "rerank";
+  if (endpoint.startsWith("/v1/send-email")) return "email";
   return "read";
 }
 

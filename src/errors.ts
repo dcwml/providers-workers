@@ -12,6 +12,17 @@ export class NonRetryableError extends Error {
   }
 }
 
+/**
+ * 投递状态未知（邮件不幂等）：如 SMTP DATA 阶段后超时/断连、SendGrid fetch 抛错。
+ * runner 捕获后立即中止降级——防止同一封信发出两份。
+ */
+export class DeliveryUncertainError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "DeliveryUncertainError";
+  }
+}
+
 /** runner 聚合各家失败时使用的结构 */
 export interface ProviderError {
   provider: string;

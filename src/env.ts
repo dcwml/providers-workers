@@ -9,6 +9,8 @@ export interface Env {
   JINA_API_KEY?: string;
   TAVILY_API_KEY?: string;
   FIRECRAWL_API_KEY?: string;
+  SENDGRID_API_KEY?: string;
+  EXMAIL_SMTP_PASSWORD?: string;
   /** 允许供应商声明各自的其它 key 名 */
   [key: string]: string | undefined;
 }

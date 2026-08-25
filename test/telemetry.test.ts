@@ -106,6 +106,7 @@ describe("featureFromEndpoint", () => {
     expect(featureFromEndpoint("/v1/chat/completions")).toBe("chat");
     expect(featureFromEndpoint("/v1/embeddings")).toBe("embeddings");
     expect(featureFromEndpoint("/v1/rerank")).toBe("rerank");
+    expect(featureFromEndpoint("/v1/send-email")).toBe("email");
     expect(featureFromEndpoint("/v1/read")).toBe("read");
     expect(featureFromEndpoint("/anything-else")).toBe("read");
   });

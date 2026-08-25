@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DeliveryUncertainError,
   NonRetryableError,
   RetryableError,
   classifyHttpStatus,
@@ -38,5 +39,16 @@ describe("classifyNetworkError", () => {
 
   it("wraps non-Error values", () => {
     expect(classifyNetworkError("weird").message).toContain("weird");
+  });
+});
+
+describe("DeliveryUncertainError", () => {
+  it("is a distinct Error subclass carrying its name and cause", () => {
+    const cause = new TypeError("socket died");
+    const err = new DeliveryUncertainError("smtp: uncertain", { cause });
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe("DeliveryUncertainError");
+    expect(err.message).toBe("smtp: uncertain");
+    expect(err.cause).toBe(cause);
   });
 });
