@@ -1,8 +1,8 @@
 # send-email 端点设计（email 模块 / SendGrid + SMTP）
 
 - 日期：2026-08-25
-- 状态：设计十节已于会话口头批准（决策点：单次尝试+安全降级 / 缺省默认链 / from 内置 / 首版 SendGrid+一家 SMTP）；本 spec 落盘，含两处书面精化（第 3.5、3.8 节，标注「精化」）
-- 范围：新增 `POST /v1/send-email` 及 `src/email/` 模块，首版 provider = SendGrid + 一家 SMTP（服务商待用户提供，见第 10 节）；不含生产部署（secret 配置与 git push 另行安排）
+- 状态：已批准（决策点四项定案；用户已提供 SMTP=腾讯企业邮箱 exmail（smtp.exmail.qq.com:465/SSL，info@infility.cn）并配好 `SENDGRID_API_KEY`；验收测试收件邮箱待用户提供，不阻塞实施与本地验证）
+- 范围：新增 `POST /v1/send-email` 及 `src/email/` 模块，首版 provider = SendGrid + exmail（腾讯企业邮箱 SMTP）；不含生产部署（secret 配置与 git push 另行安排）
 
 ## 1. 背景与目标
 
@@ -15,8 +15,8 @@ providers 网关新增邮件发送端点。需求要点（用户原话归纳）�
 | 重试语义 | 单次尝试 + 安全降级：每家恰好发一次；「确定没发出去」的失败自动换下家；「不确定发没发出去」（投递状态未知）立即中止不降级——邮件不幂等，宁可让调用方人工重发，不冒重复发信风险 |
 | 缺省行为 | 未带 `?provider=` 走默认链（缺 key 的家自动跳过），与 `/v1/read` 一致；带 `?provider=` 只跑单家不降级 |
 | from 来源 | provider 内置发件人（文件里写死，支持 `Name <addr>`），请求体不接受 from 字段 |
-| 首版 provider | SendGrid（HTTP API）+ 一家 SMTP（服务商待用户提供） |
-| 链顺序 | 默认 SMTP（自有邮箱）→ SendGrid 兜底（自有域名信誉优先；待用户最终确认，翻转只改一行） |
+| 首版 provider | SendGrid（HTTP API）+ exmail（腾讯企业邮箱 SMTP） |
+| 链顺序 | SMTP（exmail，自有邮箱）→ SendGrid 兜底（自有域名信誉优先）；已随 SMTP 服务商输入定案 |
 
 ## 3. 组件设计
 
@@ -29,7 +29,7 @@ src/email/
   runner.ts         # EMAIL_CHAIN / EMAIL_PROVIDER_IDS / runEmail
   smtp-client.ts    # SMTP 协议传输库（基于 cloudflare:sockets）
   providers/sendgrid.ts
-  providers/<smtp服务短名>.ts   # 服务商确定后命名，见第 8 节
+  providers/exmail.ts        # 腾讯企业邮箱 SMTP（smtp.exmail.qq.com:465/SSL）
 ```
 
 `index.ts` 加路由与 `handleEmail`（与 handleRead 同款模式）；`errors.ts` 加 `DeliveryUncertainError`；`telemetry.ts` 的 `Feature` 加 `"email"`。每家 provider 仍是一个自包含文件（项目铁律不变；`smtp-client.ts` 定位是协议传输库——类比 fetch 之于 HTTP，不是供应商适配层）。
@@ -94,13 +94,14 @@ MIME 消息：`From`（name 非 ASCII 时 encoded-word）/ `To` / `Cc`（非空�
 
 ### 3.6 `src/email/providers/sendgrid.ts`
 
-- `id: "sendgrid"`；`BASE_URL = "https://api.sendgrid.com/v3"`；`ENV_KEY = "SENDGRID_API_KEY"`；`from` 写死（值待用户提供，含显示名）
+- `id: "sendgrid"`；`BASE_URL = "https://api.sendgrid.com/v3"`；`ENV_KEY = "SENDGRID_API_KEY"`（用户已配好值）；`from` 写死为 `{ name: "Infility", address: "info@infility.cn" }`（默认与 exmail 同地址；**前提**：该地址或 infility.cn 域名已在 SendGrid 后台完成发件认证——SendGrid 对未认证地址直接 403，实施时本地联调即验证，未认证则用户补认证或改用已认证地址，provider 文件一行改）
 - `send()`：缺 key → `NonRetryableError`（消息保持 `${ENV_KEY} is not configured` 格式）；`POST /mail/send`，Bearer 头，body：`personalizations: [{to, cc?, bcc?}]`（ParsedAddress 映射 `{email, name?}`）、`from: {email, name?}`、`subject`、`content: [{type: "text/plain"|"text/html", value: body}]`（bodyKind 决定，单 content 项）
 - 结果分类：fetch 抛错（含超时 abort）→ `DeliveryUncertainError`（请求可能已达上游被受理）；收到任何 HTTP 响应 = 确定状态：2xx → `{messageId: X-Message-Id 头 ?? undefined}`（202 响应体为空，不解析 JSON）；非 2xx → `classifyHttpStatus`（429/5xx 标 Retryable 仅影响消息文案，runner 单次不重试）
 
-### 3.7 `src/email/providers/<smtp>.ts`（服务商确定后命名）
+### 3.7 `src/email/providers/exmail.ts`（腾讯企业邮箱）
 
-- 自包含：`HOST` / `PORT` / `secure`（按服务商实际：465→"ssl"、587→"starttls"）/ `USERNAME` / `from` 全部写死；`ENV_KEY = "<ID大写>_SMTP_PASSWORD"`
+- 自包含写死：`HOST = "smtp.exmail.qq.com"`、`PORT = 465`、`secure = "ssl"`（隐式 TLS）、`USERNAME = "info@infility.cn"`、`from = { name: "Infility", address: "info@infility.cn" }`（显示名可后续一行改）；`ENV_KEY = "EXMAIL_SMTP_PASSWORD"`
+- 密码说明：邮箱后台若开启「安全登录/客户端专用密码」，`EXMAIL_SMTP_PASSWORD` 须填客户端专用密码而非登录密码（spike 阶段即验证）
 - `send()`：缺 key → `NonRetryableError` 快速跳过；组装 options 调 `sendSmtpMail(options, signal)`，结果与错误原样透传
 
 ### 3.8 `index.ts`：路由与 handleEmail
@@ -123,7 +124,7 @@ MIME 消息：`From`（name 非 ASCII 时 encoded-word）/ `To` / `Cc`（非空�
 ### 3.9 `src/errors.ts` / `src/env.ts` / `src/telemetry.ts`
 
 - errors.ts：`export class DeliveryUncertainError extends Error`（`name: "DeliveryUncertainError"`），不动既有类与函数
-- env.ts：`Env` 增 `SENDGRID_API_KEY?: string` 与 `<SMTP>_SMTP_PASSWORD?: string`（可选，与既有 key 声明一致）
+- env.ts：`Env` 增 `SENDGRID_API_KEY?: string` 与 `EXMAIL_SMTP_PASSWORD?: string`（可选，与既有 key 声明一致）
 - telemetry.ts：`Feature` 联合类型加 `"email"`；`featureFromEndpoint` 显式加 `if (endpoint.startsWith("/v1/send-email")) return "email"`（不加会把该端点 401 误归 `"read"` 兜底）
 
 ## 4. 错误矩阵与响应
@@ -170,30 +171,32 @@ provider 文件内 `ENV_KEY` 常量 + `.dev.vars.example` + README 配置表三�
 
 | 变量 | 用途 | 状态 |
 |---|---|---|
-| `SENDGRID_API_KEY` | sendgrid provider | **已定名**，值待用户提供 |
-| `<SMTP前缀>_SMTP_PASSWORD` | SMTP provider 密码（如 Zoho → `ZOHO_SMTP_PASSWORD`） | 命名规则已定，前缀随服务商名机械生成 |
+| `SENDGRID_API_KEY` | sendgrid provider | 已定名，用户已配好 `.dev.vars` |
+| `EXMAIL_SMTP_PASSWORD` | exmail provider 密码（SMTP 密码或客户端专用密码） | 已定名，待用户填 `.dev.vars` |
+
+`.dev.vars.example` 已随本 spec 同步补两行（2026-08-25 提交）。
 
 注：vitest 全 mock 不需要真实凭证；真实值用于 spike、`npm run dev` 联调与生产 secret。
 
 ## 9. 实施顺序
 
-1. SMTP spike（第 5 节）→ 报告；通过后定 provider 文件名与 ENV_KEY 终名
+1. SMTP spike（第 5 节）→ 报告（目标 exmail smtp.exmail.qq.com:465，587 仅作备测）
 2. `errors.ts` 加 `DeliveryUncertainError`；`env.ts` 加 key 声明
 3. `email/address.ts` + `test/email/address.test.ts`（TDD）
 4. `email/smtp-client.ts` + `test/email/smtp-client.test.ts`（TDD，fake socket）
-5. `email/providers/sendgrid.ts` + `<smtp>.ts` + `test/email/providers.test.ts`
+5. `email/providers/sendgrid.ts` + `exmail.ts` + `test/email/providers.test.ts`
 6. `email/runner.ts` + `test/email/runner.test.ts`
 7. `index.ts` 路由 + `telemetry.ts` + `test/index.test.ts` / `test/telemetry.test.ts` 增补
-8. 文档（第 7 节）+ `.dev.vars.example`
+8. 文档（第 7 节）+ `.dev.vars.example`（已先行同步，届时核对）
 9. `npm run typecheck && npm test` 全绿
 10. `npm run dev` 本地真发一封 → 生产部署后真发一封（验收，收件邮箱待用户提供）
 
 ## 10. 待用户输入（实施前置）
 
-1. SMTP 服务商名称及 host/port（可只说服务商，默认值我查证后写进 provider 文件；账号密码由用户自行写入 `.dev.vars`，不经聊天）
-2. SendGrid API key（用户自行写入 `.dev.vars`）；发送发件域名是否已认证（SPF/DKIM）
-3. 链顺序确认：默认 SMTP → SendGrid
-4. 验收用测试收件邮箱
+1. ~~SMTP 服务商~~ 已提供：腾讯企业邮箱 exmail（smtp.exmail.qq.com:465/SSL，账号 info@infility.cn）；密码由用户自行写入 `.dev.vars` 的 `EXMAIL_SMTP_PASSWORD`
+2. ~~SendGrid API key~~ 用户已配好 `.dev.vars`；发件认证前提见 3.6 节（默认 from=info@infility.cn，未认证则补认证或改用已认证地址）
+3. ~~链顺序确认~~ 默认 exmail → sendgrid，已定案
+4. 验收用测试收件邮箱：待提供，不阻塞实施（本地联调可临时发到用户自己任一邮箱）
 
 ## 11. 范围外（记录不实施）
 
