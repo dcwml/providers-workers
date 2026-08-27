@@ -276,6 +276,40 @@ describe("sendSmtpMail failure classification", () => {
     ).rejects.toBeInstanceOf(RetryableError);
   });
 
+  // 会话中途 abort（生产场景：30s 超时打断进行中的会话）——覆盖 raceAbort 的
+  // addEventListener("abort") 分支，而非预先 abort 的 signal.aborted 早退分支。
+  it("classifies mid-session timeout abort (pre-DATA) as retryable", async () => {
+    const ac = new AbortController();
+    const socket = new FakeSocket();
+    socket.serverSay("220 ready\r\n");
+    socket.serverSay("250-x\r\n250 AUTH PLAIN\r\n");
+    // 此后不再灌应答：AUTH PLAIN 挂起，等 abort 打断（5ms 短定时器自然过期）
+    setTimeout(() => ac.abort(), 5);
+    await expect(sendSmtpMail(baseOptions, ac.signal, connectWith(socket))).rejects.toBeInstanceOf(
+      RetryableError,
+    );
+  });
+
+  it("classifies mid-DATA timeout abort as DeliveryUncertainError", async () => {
+    const ac = new AbortController();
+    const socket = new FakeSocket();
+    socket.serverSay("220 ready\r\n");
+    socket.serverSay("250-x\r\n250 AUTH PLAIN\r\n");
+    socket.serverSay("235 ok\r\n");
+    // MAIL FROM + 4 个 RCPT（to1/to2/cc1/bcc1）共需 5 条 250
+    socket.serverSay("250 ok\r\n");
+    socket.serverSay("250 ok\r\n");
+    socket.serverSay("250 ok\r\n");
+    socket.serverSay("250 ok\r\n");
+    socket.serverSay("250 ok\r\n");
+    socket.serverSay("354 go\r\n");
+    // 最终应答永不到来：DATA 载荷已发出、结果未知，等 abort 打断
+    setTimeout(() => ac.abort(), 5);
+    await expect(sendSmtpMail(baseOptions, ac.signal, connectWith(socket))).rejects.toBeInstanceOf(
+      DeliveryUncertainError,
+    );
+  });
+
   it("rejects with NonRetryableError naming the refused recipient", async () => {
     const socket = new FakeSocket();
     socket.serverSay("220 ready\r\n");

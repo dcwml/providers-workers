@@ -77,7 +77,11 @@ class SmtpSession {
     await this.writer.write(this.encoder.encode(line + "\r\n"));
   }
 
-  /** 写 DATA 载荷，应用 SMTP dot-stuffing（行首 . 加倍）。 */
+  /**
+   * 写 DATA 载荷，应用 SMTP dot-stuffing（行首 . 加倍）。
+   * 当前 base64 CTE 下载荷行首不会出现 "."，此分支实际不触发；
+   * 保留为对未来 CTE 变更（如 7bit / quoted-printable）的防御，勿删。
+   */
   async writeRaw(raw: string): Promise<void> {
     const stuffed = raw
       .split("\r\n")
@@ -229,12 +233,16 @@ export async function sendSmtpMail(
   const messageId = `<${crypto.randomUUID()}@${domainOf(options.from.address)}>`;
   let socket: SmtpSocket | null = null;
   try {
-    socket = await raceAbort(
-      connectFn(options.host, options.port, {
-        secureTransport: options.secure === "ssl" ? "on" : "starttls",
-      }),
-      signal,
-    );
+    // abort 先赢 race 时 socket 保持 null，finally 的 socket?.close() 为 no-op；
+    // 此刻 signal.aborted 必为 true（abort 事件同步派发、reject 先 settle race），
+    // 这个迟到的已建立连接无人接手，立即自关防泄漏（慢服务器场景）。
+    const connectPromise = connectFn(options.host, options.port, {
+      secureTransport: options.secure === "ssl" ? "on" : "starttls",
+    }).then((late) => {
+      if (signal.aborted) late.close().catch(() => {});
+      return late;
+    });
+    socket = await raceAbort(connectPromise, signal);
     let session = SmtpSession.fromSocket(socket);
     await expectOk(await raceAbort(session.readReply(), signal), 220, "greeting");
 
@@ -247,7 +255,13 @@ export async function sendSmtpMail(
         throw new NonRetryableError("smtp: server does not advertise STARTTLS");
       }
       await expectOk(await raceAbort(session.sendCommand("STARTTLS"), signal), 220, "STARTTLS");
-      const tlsSocket = await raceAbort(socket.startTls(), signal);
+      // 同 connect：abort 先赢 race 时迟到的 TLS 升级 socket 立即自关
+      // （finally 只会关 socket 指向的明文层，不保证关掉此包装层）。
+      const tlsPromise = socket.startTls().then((late) => {
+        if (signal.aborted) late.close().catch(() => {});
+        return late;
+      });
+      const tlsSocket = await raceAbort(tlsPromise, signal);
       socket = tlsSocket;
       session = SmtpSession.fromSocket(tlsSocket);
       ehloLines = (
