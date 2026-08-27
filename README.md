@@ -1,6 +1,6 @@
 # Providers
 
-Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + embeddings 接口 + rerank 接口 + 页面读取接口，内置重试与供应商自动降级。
+Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + embeddings 接口 + rerank 接口 + 页面读取接口 + 邮件发送接口，内置重试与供应商自动降级。
 
 ## 端点
 
@@ -10,6 +10,7 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 | POST | `/v1/read` | body `{"url": "https://..."}`，返回页面 Markdown 正文（`text/markdown`）。供应商链固定：jina → tavily → firecrawl。 |
 | POST | `/v1/embeddings` | OpenAI 兼容 embeddings。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-m3` → siliconflow；`jina-embeddings-v5-omni-small` → jina（多模态，`task`/`normalized` 透传）。 |
 | POST | `/v1/rerank` | 文档重排序（Jina/Cohere 风格：`query` + `documents`，可选 `top_n`/`return_documents`）。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-reranker-v2-m3` → siliconflow。 |
+| POST | `/v1/send-email` | 发送纯文本/HTML 邮件（无附件，`to`/`cc`/`bcc` 跨组去重）。供应商链固定：exmail → sendgrid；每家单次尝试 + 安全降级（投递状态未知时中止防重复发信）。 |
 | GET | `/admin` | 管理后台（token 管理：新建/启停/删除，自动生成随机串）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`。 |
 
 业务端点要求 `Authorization: Bearer <token>`；token 由管理员在 `/admin` 后台创建与停用（存 D1，无需重新部署）。
@@ -20,6 +21,7 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 - 网络错/超时/5xx/429 触发重试；其它 4xx 不重试但直接换下一家。
 - 全链失败返回 502，body 附各家错误明细。
 - embeddings/rerank 例外：单 provider 形式，无链、无降级，失败即返回 502（单家内部重试策略同上）。
+- email 例外：邮件不幂等——每家只发一次不重试；「确定没发出」的失败才降级，「不确定发没发出」（如 DATA 阶段后超时）中止并返回 502 `delivery_uncertain`。
 
 ## 本地开发
 
@@ -62,6 +64,11 @@ curl -s http://localhost:8787/v1/rerank \
   -H "Authorization: Bearer sk_local_localtest1234" \
   -H "Content-Type: application/json" \
   -d '{"model":"BAAI/bge-reranker-v2-m3","query":"What is deep learning?","documents":["Deep learning is a branch of machine learning.","It will rain tomorrow."]}'
+
+curl -s http://localhost:8787/v1/send-email \
+  -H "Authorization: Bearer sk_local_localtest1234" \
+  -H "Content-Type: application/json" \
+  -d '{"subject":"smoke test","text":"hello from local dev","to":["a@example.com"]}'
 ```
 
 ## 配置
@@ -79,6 +86,8 @@ curl -s http://localhost:8787/v1/rerank \
 | `ZHIPU_API_KEY` | chat 供应商 zhipu（上游模型 glm-4.7-flash） |
 | `JINA_API_KEY` | read 供应商 jina + embeddings 供应商 jina（上游模型 jina-embeddings-v5-omni-small）共用 |
 | `TAVILY_API_KEY` / `FIRECRAWL_API_KEY` | read 供应商 |
+| `SENDGRID_API_KEY` | email 供应商 sendgrid（HTTP API 发信） |
+| `EXMAIL_SMTP_PASSWORD` | email 供应商 exmail（腾讯企业邮箱 SMTP 密码；后台开了安全登录时填客户端专用密码） |
 
 ## 新增一个 chat 供应商
 

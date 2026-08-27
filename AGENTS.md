@@ -41,6 +41,7 @@ migrations/       # D1 schema 迁移（wrangler d1 migrations）
   embeddings/     # types / models（model→单 provider，无链）/ runner / providers/
   rerank/         # types / models（model→单 provider，无链）/ runner / providers/
   read/           # types / runner（固定链）/ providers/（jina、tavily、firecrawl）
+  email/          # types / address（地址解析+去重）/ runner（链）/ smtp-client（SMTP 协议库）/ providers/（exmail、sendgrid）
 ```
 
 ## 核心约定
@@ -61,6 +62,7 @@ migrations/       # D1 schema 迁移（wrangler d1 migrations）
 - read：`src/read/runner.ts` 的 `READ_CHAIN` 固定 jina → tavily → firecrawl，勿改顺序除非明确要求。
 - embeddings：`src/embeddings/models.ts` 按逻辑 model 写死**单个** provider——无链、无降级，失败即失败；未注册的 model 直接 400（`model_not_found`），不设回落。
 - rerank：`src/rerank/models.ts` 同 embeddings——按逻辑 model 写死单个 provider，无链、无降级；未注册的 model 直接 400（`model_not_found`）。
+- email：`src/email/runner.ts` 的 `EMAIL_CHAIN` 固定 exmail → sendgrid。**单次尝试 + 安全降级**：每家恰好一次（`withRetry` 传 `maxAttempts:1`，仅取遥测接线），「确定没发出」的失败换下家；`DeliveryUncertainError`（投递状态未知：SMTP DATA 354 后超时/断连、SendGrid fetch 抛错）立即中止不降级，返回 502 `delivery_uncertain`——邮件不幂等，防重复发信，勿「统一」成 DEFAULT_RETRY。收件人解析与 to>cc>bcc 去重在 `src/email/address.ts`；from 内置于各 provider 文件；`smtp-client.ts` 是协议传输库（依赖注入 connect 便于 mock），不算供应商适配层。
 
 ### 错误与重试
 
