@@ -43,7 +43,7 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 
 ### 能力裁剪（发送前自动进行）
 
-每家供应商声明四项能力（systemPrompt / tools / jsonObject / jsonSchema，均经实测确认）。发送前网关按目标供应商的能力裁剪请求：不支持的参数直接删除；`response_format.type: json_schema` 不支持时降级为 `json_object`；不支持 system 消息时并入首条 user 消息；随后把 `model` 改写为该供应商的上游 model。链内 agnes / gptsapi / siliconflow 四项能力全部支持；zhipu 不支持 `jsonSchema`（`glm-4.7-flash` 请求带 `json_schema` 会降级为 `json_object`），其余三项支持。
+每家供应商声明四项能力（systemPrompt / tools / jsonObject / jsonSchema，均经实测确认）。发送前网关按目标供应商的能力裁剪请求：不支持的参数直接删除；`response_format.type: json_schema` 不支持时降级为 `json_object`；不支持 system 消息时并入首条 user 消息；随后把 `model` 改写为该供应商的上游 model。链内 agnes / gptsapi / siliconflow 四项能力全部支持；zhipu 与 sensenova 不支持 `jsonSchema`（请求带 `json_schema` 会降级为 `json_object`），其余三项支持。
 
 ## 响应格式
 
@@ -85,7 +85,7 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 | 400 | `missing_model` | `model is required` | `model` 缺失或为空串 |
 | 400 | `invalid_messages` | `messages must be a non-empty array` | `messages` 缺失或空数组 |
 | 400 | `stream_not_supported` | `streaming is not supported` | `stream: true` |
-| 400 | `unknown_provider` | `unknown provider: xxx; valid providers: agnes, gptsapi, siliconflow, zhipu` | `?provider=` 传了未知值 |
+| 400 | `unknown_provider` | `unknown provider: xxx; valid providers: agnes, gptsapi, siliconflow, zhipu, sensenova` | `?provider=` 传了未知值 |
 | 404 | — | `not found` | 方法不是 POST，或路径不对 |
 | 502 | `all_providers_failed` | `all providers failed` | 整条链全部失败，看 `provider_errors` 定位 |
 
@@ -116,6 +116,7 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 | `Qwen/Qwen3-8B` | siliconflow → agnes → gptsapi |
 | `gpt-5.4-nano` | gptsapi → agnes → siliconflow |
 | `glm-4.7-flash` | zhipu → agnes → gptsapi |
+| `sensenova-6.8-flash-lite` | sensenova → agnes → gptsapi |
 | 其它任意未注册 model | agnes（统一回落链） |
 
 注意与 embeddings/rerank 的区别：chat 对未注册的 model **不报 400**，而是统一回落到 agnes 单家链。
@@ -133,8 +134,9 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 | gptsapi | `gpt-5.4-nano` |
 | siliconflow | `Qwen/Qwen3.5-4B` |
 | zhipu | `glm-4.7-flash` |
+| sensenova | `sensenova-6.8-flash-lite` |
 
-注意：逻辑 model `Qwen/Qwen3-8B` 的键名保留旧称以兼容既有调用方，其 siliconflow 上游已换为 `Qwen/Qwen3.5-4B`——响应 `model` 字段透传显示的是新上游名。`glm-4.7-flash` 上游默认开启思考模式（单次约 38–49s，超网关 30s 超时上限），不带 `thinking` 参数的默认请求会超时并降级到链内下一家；调用方显式传 `thinking: {"type": "disabled"}` 可透传生效。
+注意：逻辑 model `Qwen/Qwen3-8B` 的键名保留旧称以兼容既有调用方，其 siliconflow 上游已换为 `Qwen/Qwen3.5-4B`——响应 `model` 字段透传显示的是新上游名。`glm-4.7-flash` 上游默认开启思考模式（单次约 38–49s，超网关 30s 超时上限），不带 `thinking` 参数的默认请求会超时并降级到链内下一家；调用方显式传 `thinking: {"type": "disabled"}` 可透传生效。`sensenova-6.8-flash-lite` 同样默认开思考模式（单次约 20s，思考字段名为 `reasoning`），贴近 30s 上限时首试可能超时并触发重试（生产实测：首试 30s 超时 → 重试成功，总耗时约 52s）。
 
 （代码中另有 openrouter、deepseek-official 两家供应商文件，当前未启用在任何链中，属预留示例。）
 
@@ -147,6 +149,7 @@ POST /v1/chat/completions?provider=agnes
 POST /v1/chat/completions?provider=gptsapi
 POST /v1/chat/completions?provider=siliconflow
 POST /v1/chat/completions?provider=zhipu
+POST /v1/chat/completions?provider=sensenova
 ```
 
 未知取值直接 400 并在 message 里列出合法 id。正常业务调用不要带此参数。
@@ -187,9 +190,10 @@ curl -X POST "https://api.oklapzlj.com/v1/chat/completions" \
 # → 400 {"error":{"message":"streaming is not supported","type":"invalid_request_error","code":"stream_not_supported"}}
 ```
 
-## 生产现状（2026-08-21 实测）
+## 生产现状（2026-08-27 实测）
 
-- 四家供应商密钥均已配置（含 2026-08-21 上线的 zhipu、jina embeddings）。
-- `glm-4.7-flash`（`thinking` 关闭）实测 200；上游偶发 429（访问量过大）时重试 2 次后按设计降级到 agnes，均实测确认。
+- 五家链内供应商密钥均已配置（含 2026-08-27 上线的 sensenova）。
+- `glm-4.7-flash`（`thinking` 关闭）实测 200；上游偶发 429（访问量过大）时重试 2 次后按设计降级到 agnes，均实测确认（2026-08-21）。
 - `Qwen/Qwen3-8B` 实测 200，响应 `model` 为 `Qwen/Qwen3.5-4B`（siliconflow 上游已换新模型，逻辑名保留旧称）。
+- `sensenova-6.8-flash-lite` 实测 200（2026-08-27）：链路真发总耗时 51.9s（首试 30s 超时 → 重试成功，D1 遥测逐次落库）；`?provider=sensenova` 隔离路径单次 20.8s 成功。
 - 慢模型（如默认开思考模式的模型）可能接近 30 秒单次超时上限，触发链内重试或换家，属预期行为。

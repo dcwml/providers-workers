@@ -72,9 +72,21 @@ master（spec/plan）：
 
 - `npm run typecheck`：干净（`tsc --noEmit` 无输出，exit 0）。
 - `npm test`：**22 文件 280/280 全绿**（273 基线 + sensenova 供应商 6 + 链 1），无失败、无跳过。
-- 测试中上游 fetch 全部 mock，无真实网络调用；probe/curl 实测仅在 Task 2 按计划进行。分支仅在本地，未 push。
+- 测试中上游 fetch 全部 mock，无真实网络调用；probe/curl 实测仅在 Task 2 按计划进行。已于 2026-08-27 push（136f23b..7233b81）并自动部署（见「生产部署与线上验证」）。
+
+## 生产部署与线上验证（2026-08-27 已完成）
+
+- 推送前 L3 深度安全审查：0 findings。
+- `SENSENOVA_API_KEY` 生产 secret 已配置（用户操作，`wrangler secret list` 确认）；git push（136f23b..7233b81）自动部署成功，版本 90a87289 已 100% 接流。
+- 线上实测：
+  1. 无 token → 401 `unauthorized`（鉴权正常）
+  2. 链路真发 `{"model":"sensenova-6.8-flash-lite",...}` → 200（总耗时 51.9s），`model` 透传 `sensenova-6.8-flash-lite`，`reasoning` 思考字段原样透传，content 为 `pong`
+  3. `?provider=sensenova` 隔离路径 → 200（20.8s，单次成功）
+- D1 `provider_attempts` 遥测核对（provider='sensenova' 共 3 行）：
+  - 链路请求 c1aa1227：尝试1 超时（30000ms，`network error: The operation was aborted due to timeout`，result=retry）→ 尝试2 成功（20127ms，result=ok）——**超时重试机制生产实证**：模型默认思考模式单次 ~20s 贴近 30s 上限，首试超时属预期，重试后成功（30+1+20≈52s，与 curl 实测 51.9s 吻合）
+  - 隔离请求 48c4e4e3：单次成功（19969ms，result=ok）
 
 ## 遗留与后续
 
-1. **生产部署待办**：`wrangler secret put SENSENOVA_API_KEY` + git push 自动部署，验收后另行安排。
-2. 思考模式延迟问题：调用方可尝试显式传商汤支持的关闭思考参数（如有）——网关零注入设计，不代为注入。
+1. 思考模式延迟问题：调用方可尝试显式传商汤支持的关闭思考参数（如有）——网关零注入设计，不代为注入；默认请求单次尝试有超时风险（生产已实证首试 30s 超时后重试成功的路径）。
+2. 冒烟用网关 token 已出现在聊天记录，如介意可在 /admin 后台禁用或轮换。
