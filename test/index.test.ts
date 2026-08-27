@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatOutcome } from "../src/chat/runner";
+import type { EmailOutcome } from "../src/email/runner";
 import type { EmbeddingsOutcome } from "../src/embeddings/runner";
 import type { ReadOutcome } from "../src/read/runner";
 import type { RerankOutcome } from "../src/rerank/runner";
@@ -17,6 +18,9 @@ const state = vi.hoisted(() => ({
   readOnly: undefined as unknown,
   embeddingsProvider: undefined as unknown,
   rerankProvider: undefined as unknown,
+  emailOutcome: undefined as unknown as EmailOutcome,
+  emailOnly: undefined as unknown,
+  emailMail: undefined as unknown,
 }));
 
 vi.mock("../src/chat/runner", () => ({
@@ -45,6 +49,16 @@ vi.mock("../src/rerank/runner", () => ({
     state.rerankProvider = provider;
     return state.rerankOutcome;
   },
+}));
+vi.mock("../src/email/runner", () => ({
+  runEmail: async (mail: unknown, _env: unknown, only: unknown) => {
+    state.emailMail = mail;
+    state.emailOnly = only;
+    return state.emailOutcome;
+  },
+  getEmailProviderById: (id: string) =>
+    id === "exmail" || id === "sendgrid" ? { id } : undefined,
+  EMAIL_PROVIDER_IDS: ["exmail", "sendgrid"],
 }));
 
 import handler from "../src/index";
@@ -76,6 +90,9 @@ beforeEach(() => {
   state.readOnly = undefined;
   state.embeddingsProvider = undefined;
   state.rerankProvider = undefined;
+  state.emailOutcome = { kind: "ok", status: 200, body: { accepted: true, provider: "exmail" }, providerOk: "exmail" };
+  state.emailOnly = undefined;
+  state.emailMail = undefined;
 });
 
 describe("auth", () => {
@@ -419,6 +436,195 @@ describe("rerank endpoint", () => {
     };
     expect(body.error.code).toBe("provider_failed");
     expect(body.error.provider_errors).toEqual([{ provider: "siliconflow", message: "dead" }]);
+  });
+});
+
+describe("send-email endpoint", () => {
+  const validBody = {
+    subject: "Hello",
+    html: "<p>Hi</p>",
+    to: ["a@x.com"],
+  };
+
+  it("passes through the runner body with 200", async () => {
+    state.emailOutcome = {
+      kind: "ok",
+      status: 200,
+      body: { accepted: true, provider: "exmail", message_id: "m1" },
+      providerOk: "exmail",
+    };
+    const res = await handler.fetch(post("/v1/send-email", validBody), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ accepted: true, provider: "exmail", message_id: "m1" });
+  });
+
+  it("prefers html when both text and html are provided", async () => {
+    await handler.fetch(
+      post("/v1/send-email", { ...validBody, text: "plain fallback" }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(state.emailMail).toMatchObject({ bodyKind: "html", body: "<p>Hi</p>" });
+  });
+
+  it("uses text when html is absent", async () => {
+    await handler.fetch(
+      post("/v1/send-email", { subject: "s", text: "plain only", to: ["a@x.com"] }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(state.emailMail).toMatchObject({ bodyKind: "text", body: "plain only" });
+  });
+
+  it("rejects invalid JSON with 400", async () => {
+    const req = new Request("https://gw.example/v1/send-email", {
+      method: "POST",
+      headers: { authorization: "Bearer sekret" },
+      body: "not json",
+    });
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a null body and missing subject with 400", async () => {
+    const res1 = await handler.fetch(post("/v1/send-email", null), env, makeFakeCtx().ctx);
+    expect(res1.status).toBe(400);
+    const res2 = await handler.fetch(
+      post("/v1/send-email", { html: "x", to: ["a@x.com"] }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res2.status).toBe(400);
+    const body2 = (await res2.json()) as { error: { code: string } };
+    expect(body2.error.code).toBe("missing_subject");
+  });
+
+  it("rejects control characters in subject with invalid_subject", async () => {
+    const res = await handler.fetch(
+      post("/v1/send-email", { ...validBody, subject: "bad\u0007subject" }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_subject");
+  });
+
+  it("rejects missing body with missing_body", async () => {
+    const res = await handler.fetch(
+      post("/v1/send-email", { subject: "s", to: ["a@x.com"] }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("missing_body");
+  });
+
+  it("rejects invalid to types with invalid_recipients", async () => {
+    const res1 = await handler.fetch(
+      post("/v1/send-email", { ...validBody, to: [] }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res1.status).toBe(400);
+    const res2 = await handler.fetch(
+      post("/v1/send-email", { ...validBody, to: 42 }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res2.status).toBe(400);
+    const body2 = (await res2.json()) as { error: { code: string } };
+    expect(body2.error.code).toBe("invalid_recipients");
+  });
+
+  it("rejects a malformed address with a positioned message", async () => {
+    const res = await handler.fetch(
+      post("/v1/send-email", { ...validBody, cc: ["ok@x.com", "not-an-address"] }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("invalid_recipients");
+    expect(body.error.message).toContain('cc[1]: invalid address "not-an-address"');
+  });
+
+  it("accepts a single string recipient and dedupes across groups", async () => {
+    await handler.fetch(
+      post("/v1/send-email", {
+        subject: "s",
+        html: "x",
+        to: "A@X.com",
+        cc: ["a@x.com", "c@x.com"],
+        bcc: ["c@x.com"],
+      }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(state.emailMail).toMatchObject({
+      to: [{ address: "A@X.com" }],
+      cc: [{ address: "c@x.com" }],
+      bcc: [],
+    });
+  });
+
+  it("maps uncertain outcome to 502 delivery_uncertain", async () => {
+    state.emailOutcome = {
+      kind: "uncertain",
+      status: 502,
+      errors: [{ provider: "exmail", message: "uncertain" }],
+    };
+    const res = await handler.fetch(post("/v1/send-email", validBody), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: { code: string; provider_errors: unknown[] } };
+    expect(body.error.code).toBe("delivery_uncertain");
+    expect(body.error.provider_errors).toEqual([{ provider: "exmail", message: "uncertain" }]);
+  });
+
+  it("maps all-failed outcome to 502 all_providers_failed", async () => {
+    state.emailOutcome = {
+      kind: "all-failed",
+      status: 502,
+      errors: [{ provider: "exmail", message: "dead" }],
+    };
+    const res = await handler.fetch(post("/v1/send-email", validBody), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("all_providers_failed");
+  });
+
+  it("resolves ?provider=sendgrid and rejects unknown providers", async () => {
+    const res = await handler.fetch(
+      post("/v1/send-email?provider=sendgrid", validBody),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(200);
+    expect((state.emailOnly as { id: string }).id).toBe("sendgrid");
+
+    const res2 = await handler.fetch(
+      post("/v1/send-email?provider=bogus", validBody),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res2.status).toBe(400);
+    const body2 = (await res2.json()) as { error: { code: string; message: string } };
+    expect(body2.error.code).toBe("unknown_provider");
+    expect(body2.error.message).toContain("exmail, sendgrid");
+  });
+
+  it("records one requests row with feature email", async () => {
+    const d1 = makeFakeD1();
+    d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 3 }]);
+    const c = makeFakeCtx();
+    const envReq: WorkerEnv = { DB: d1.db } as WorkerEnv;
+    const res = await handler.fetch(post("/v1/send-email", validBody), envReq, c.ctx);
+    expect(res.status).toBe(200);
+    await Promise.all(c.promises);
+    const row = d1.statements.find((s) => s.sql === INSERT_REQUEST_SQL);
+    expect(row?.params[1]).toBe("email");
+    expect(row?.params[3]).toBe("");
   });
 });
 

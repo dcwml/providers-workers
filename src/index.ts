@@ -23,6 +23,9 @@ import {
 } from "./rerank/models";
 import { runRerank } from "./rerank/runner";
 import type { RerankProvider, RerankRequest } from "./rerank/types";
+import { parseAddress, prepareRecipients } from "./email/address";
+import { EMAIL_PROVIDER_IDS, getEmailProviderById, runEmail } from "./email/runner";
+import type { EmailProvider, ParsedAddress, PreparedMail } from "./email/types";
 import { recordUnauthorized, RequestRecorder, type Feature, type RecorderMeta } from "./telemetry";
 
 function json(status: number, body: unknown): Response {
@@ -393,6 +396,162 @@ async function handleRerank(
   return { response: json(200, outcome.body), providerOk: outcome.providerOk };
 }
 
+type RecipientParse =
+  | { ok: true; list: ParsedAddress[] }
+  | { ok: false; message: string };
+
+function parseRecipientField(field: string, value: unknown): RecipientParse {
+  const values = typeof value === "string" ? [value] : Array.isArray(value) ? value : null;
+  if (values === null || values.length === 0) {
+    return { ok: false, message: `${field} must be a non-empty string or a non-empty array of addresses` };
+  }
+  const list: ParsedAddress[] = [];
+  for (let i = 0; i < values.length; i++) {
+    const item = values[i];
+    if (typeof item !== "string") {
+      return { ok: false, message: `${field}[${i}] must be a string` };
+    }
+    const parsed = parseAddress(item);
+    if (parsed === null) {
+      return { ok: false, message: `${field}[${i}]: invalid address "${item}"` };
+    }
+    list.push(parsed);
+  }
+  return { ok: true, list };
+}
+
+function recipientsError(message: string): HandlerResult {
+  return {
+    response: json(400, {
+      error: { message, type: "invalid_request_error", code: "invalid_recipients" },
+    }),
+  };
+}
+
+async function handleEmail(
+  request: Request,
+  env: WorkerEnv,
+  providerParam: string | null,
+  recorder: RequestRecorder,
+  meta: RecorderMeta,
+): Promise<HandlerResult> {
+  // ?provider= 覆盖（测试用）：隔离只跑指定单家。未知 provider 直接 400。
+  let only: EmailProvider | undefined;
+  if (providerParam !== null) {
+    only = getEmailProviderById(providerParam);
+    if (!only) {
+      return {
+        response: json(400, {
+          error: {
+            message: `unknown provider: ${providerParam}; valid providers: ${EMAIL_PROVIDER_IDS.join(", ")}`,
+            type: "invalid_request_error",
+            code: "unknown_provider",
+          },
+        }),
+      };
+    }
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return {
+      response: json(400, {
+        error: { message: "invalid JSON body", type: "invalid_request_error", code: "invalid_json" },
+      }),
+    };
+  }
+  const req = (body ?? {}) as { [key: string]: unknown };
+
+  if (typeof req.subject !== "string" || req.subject.length === 0) {
+    return {
+      response: json(400, {
+        error: { message: "subject is required", type: "invalid_request_error", code: "missing_subject" },
+      }),
+    };
+  }
+  if (/[\x00-\x1F\x7F]/.test(req.subject)) {
+    return {
+      response: json(400, {
+        error: {
+          message: "subject must not contain control characters",
+          type: "invalid_request_error",
+          code: "invalid_subject",
+        },
+      }),
+    };
+  }
+
+  // text/html 二选一：都传以 html 为准（不报错）；至少一个非空
+  const html = typeof req.html === "string" && req.html.length > 0 ? req.html : null;
+  const text = typeof req.text === "string" && req.text.length > 0 ? req.text : null;
+  if (html === null && text === null) {
+    return {
+      response: json(400, {
+        error: {
+          message: "text or html body is required",
+          type: "invalid_request_error",
+          code: "missing_body",
+        },
+      }),
+    };
+  }
+
+  const toParsed = parseRecipientField("to", req.to);
+  if (!toParsed.ok) return recipientsError(toParsed.message);
+  let cc: ParsedAddress[] = [];
+  if (req.cc !== undefined) {
+    const parsed = parseRecipientField("cc", req.cc);
+    if (!parsed.ok) return recipientsError(parsed.message);
+    cc = parsed.list;
+  }
+  let bcc: ParsedAddress[] = [];
+  if (req.bcc !== undefined) {
+    const parsed = parseRecipientField("bcc", req.bcc);
+    if (!parsed.ok) return recipientsError(parsed.message);
+    bcc = parsed.list;
+  }
+
+  const recipients = prepareRecipients(toParsed.list, cc, bcc);
+  const mail: PreparedMail = {
+    subject: req.subject,
+    bodyKind: html !== null ? "html" : "text",
+    body: html ?? text ?? "",
+    to: recipients.to,
+    cc: recipients.cc,
+    bcc: recipients.bcc,
+  };
+
+  const outcome = await runEmail(mail, env, only, recorder);
+  if (outcome.kind === "all-failed") {
+    return {
+      response: json(502, {
+        error: {
+          message: "all email providers failed",
+          type: "upstream_error",
+          code: "all_providers_failed",
+          provider_errors: outcome.errors,
+        },
+      }),
+    };
+  }
+  if (outcome.kind === "uncertain") {
+    return {
+      response: json(502, {
+        error: {
+          message:
+            "delivery is uncertain: the upstream may have accepted the message; provider fallback was suppressed to avoid duplicate sends",
+          type: "upstream_error",
+          code: "delivery_uncertain",
+          provider_errors: outcome.errors,
+        },
+      }),
+    };
+  }
+  return { response: json(200, outcome.body), providerOk: outcome.providerOk };
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -422,6 +581,11 @@ export default {
       if (url.pathname === "/v1/rerank") {
         return withRecording(request, env, ctx, url.pathname, "rerank", (recorder, meta) =>
           handleRerank(request, env, providerParam, recorder, meta),
+        );
+      }
+      if (url.pathname === "/v1/send-email") {
+        return withRecording(request, env, ctx, url.pathname, "email", (recorder, meta) =>
+          handleEmail(request, env, providerParam, recorder, meta),
         );
       }
     }
