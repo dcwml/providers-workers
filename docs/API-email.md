@@ -110,5 +110,5 @@ curl -X POST "https://api.oklapzlj.com/v1/send-email?provider=exmail" \
 
 截至 2026-08-27（生产已部署，api.oklapzlj.com 实测）：
 
-- **sendgrid**：生产实测真发成功（200 + `X-Message-Id`，message_id=kiR5Rz50Qgmx6XTQyBjneA）；生产 secret `SENDGRID_API_KEY` 已配置，遥测落库正常（exmail=fatal → sendgrid=ok）。
+- **sendgrid**：生产实测真发成功，发件人 `Provider <provider@em8487.oklapzlj.com>`（SendGrid 认证发件地址，81bdf08 版本起生效，message_id=2utS9gC0Tb-SpuEarPw8Pg）；生产 secret `SENDGRID_API_KEY` 已配置；遥测落库正常（exmail=fatal → sendgrid=ok）。
 - **exmail**：`EXMAIL_SMTP_PASSWORD` 未配置，缺 key 自动跳过（不影响 sendgrid 兜底）。配置后 SMTP 链路即可启用（465/SSL，AUTH PLAIN 优先 + LOGIN 回退）；发送前建议先用 `?provider=exmail` 隔离验证。
