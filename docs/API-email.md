@@ -108,4 +108,7 @@ curl -X POST "https://api.oklapzlj.com/v1/send-email?provider=exmail" \
 
 ## 生产现状
 
-[由 Task 9 完成时按实测结果填写：exmail/sendgrid 各自可用性、发件认证状态]
+截至 2026-08-27（本地实测，生产尚未部署）：
+
+- **sendgrid**：本地 `wrangler dev` 实测真发成功（202 + `X-Message-Id`），降级与遥测接线正常。生产上线前需 `npx wrangler secret put SENDGRID_API_KEY`（生产 secret 当前未配置）。
+- **exmail**：`EXMAIL_SMTP_PASSWORD` 未配置，缺 key 自动跳过（不影响 sendgrid 兜底）。配置后 SMTP 链路即可启用（465/SSL，AUTH PLAIN 优先 + LOGIN 回退）；发送前建议先用 `?provider=exmail` 隔离验证。
