@@ -14,6 +14,7 @@ AGNES_API_KEY=
 SILICONFLOW_API_KEY=
 GPTSAPI_API_KEY=
 ZHIPU_API_KEY=
+SENSENOVA_API_KEY=
 
 # read 供应商（JINA_API_KEY 同时供 embeddings 供应商 jina 使用：上游模型 jina-embeddings-v5-omni-small）
 JINA_API_KEY=

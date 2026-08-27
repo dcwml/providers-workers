@@ -57,11 +57,22 @@ capabilities: { systemPrompt: true, tools: true, jsonObject: true, jsonSchema: f
 
 ## 提交列表
 
-（Task 3 补全）
+master（spec/plan）：
+
+- `8788fe7` docs: add sensenova chat provider design spec
+- `8c4b5c9` docs: add sensenova chat provider implementation plan
+
+分支 `sensenova-chat-provider`（基于 master @ `8c4b5c9`）：
+
+- `4291688` feat: add sensenova chat provider with sensenova-6.8-flash-lite chain（Task 1，TDD：先测试 RED 再实现 GREEN）
+- `4744b71` feat: calibrate sensenova capabilities from live probe（Task 2：capabilities 实测终值 + 逐项验证注释 + 成功路径断言改为 json_object 降级 + 本报告初稿）
+- 本提交 docs: add sensenova config docs and completion report（Task 3：`.dev.vars.example` 补 `SENSENOVA_API_KEY=`、`README.md` 配置表补行、本报告补全）
 
 ## 验收结果
 
-（Task 3 补全）
+- `npm run typecheck`：干净（`tsc --noEmit` 无输出，exit 0）。
+- `npm test`：**22 文件 280/280 全绿**（273 基线 + sensenova 供应商 6 + 链 1），无失败、无跳过。
+- 测试中上游 fetch 全部 mock，无真实网络调用；probe/curl 实测仅在 Task 2 按计划进行。分支仅在本地，未 push。
 
 ## 遗留与后续
 

@@ -84,6 +84,7 @@ curl -s http://localhost:8787/v1/send-email \
 | `SILICONFLOW_API_KEY` | chat 供应商 siliconflow（上游模型 Qwen/Qwen3.5-4B）；embeddings 供应商 siliconflow（上游模型 BAAI/bge-m3）；rerank 供应商 siliconflow（上游模型 BAAI/bge-reranker-v2-m3） |
 | `GPTSAPI_API_KEY` | chat 供应商 gptsapi（上游模型 gpt-5.4-nano） |
 | `ZHIPU_API_KEY` | chat 供应商 zhipu（上游模型 glm-4.7-flash） |
+| `SENSENOVA_API_KEY` | chat 供应商 sensenova（上游模型 sensenova-6.8-flash-lite） |
 | `JINA_API_KEY` | read 供应商 jina + embeddings 供应商 jina（上游模型 jina-embeddings-v5-omni-small）共用 |
 | `TAVILY_API_KEY` / `FIRECRAWL_API_KEY` | read 供应商 |
 | `SENDGRID_API_KEY` | email 供应商 sendgrid（HTTP API 发信） |
