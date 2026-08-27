@@ -91,7 +91,7 @@ master（spec/plan）：
 1. 思考模式延迟问题：调用方可尝试显式传商汤支持的关闭思考参数（如有）——网关零注入设计，不代为注入；默认请求单次尝试有超时风险（生产已实证首试 30s 超时后重试成功的路径）。
 2. 冒烟用网关 token 已出现在聊天记录，如介意可在 /admin 后台禁用或轮换。
 
-## 后续变更：上游切 glm-5.2 + 链扩 5 家（2026-08-27，用户变更 + 同步验收，未部署）
+## 后续变更：上游切 glm-5.2 + 链扩 5 家（2026-08-27，用户变更 + 同步验收 + 已上线）
 
 用户调整（本地）：
 
@@ -106,3 +106,4 @@ master（spec/plan）：
 - 测试同步：chains.test.ts 三条链断言 + sensenova 链断言改 5 家；providers.test.ts 成功路径断言 model→`glm-5.2`、response_format→json_schema 原样保留。`npm run typecheck && npm test` 22 文件 280/280 全绿。
 - 文档同步：README 配置表、docs/API-chat.md（能力说明/链表/对照表/运维注意/生产现状）。
 - 运维提醒：链扩 5 家后全链失败最坏耗时显著变长（每家最多 3 次×30s）；zhipu/sensenova 的 429 配额类错误在链尾兑底时成功率存疑。
+- 生产验证（2026-08-27，提交 93712c7，部署版本 83f651b1）：链路调用 `sensenova-6.8-flash-lite` → 200（6.7s，单次成功），响应 `model` 透传 `glm-5.2`，`reasoning_content` 正常，D1 遥测单次落库（f90aa260，attempt 1，ok，4533ms）。推送前 L3 扫描因 Credits 耗尽未能执行（用户知情后选择跳过）。

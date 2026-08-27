@@ -196,5 +196,5 @@ curl -X POST "https://api.oklapzlj.com/v1/chat/completions" \
 - `glm-4.7-flash`（`thinking` 关闭）实测 200；上游偶发 429（访问量过大）时重试 2 次后按设计降级到 agnes，均实测确认（2026-08-21）。
 - `Qwen/Qwen3-8B` 实测 200，响应 `model` 为 `Qwen/Qwen3.5-4B`（siliconflow 上游已换新模型，逻辑名保留旧称）。
 - `sensenova-6.8-flash-lite`（时为 flash-lite 上游）实测 200（2026-08-27）：链路真发总耗时 51.9s（首试 30s 超时 → 重试成功，D1 遥测逐次落库）；`?provider=sensenova` 隔离路径单次 20.8s 成功。
-- **上游已切 glm-5.2 + 链扩 5 家（2026-08-27 本地变更，尚未部署生产）**：本地实测 glm-5.2 四项能力全支持（jsonSchema 判别通过）、单次 1-11s；生产验证待部署后补充。
+- **上游已切 glm-5.2 + 链扩 5 家（2026-08-27 已上线）**：本地实测 glm-5.2 四项能力全支持（jsonSchema 判别通过）、单次 1-11s；生产实测（2026-08-27，版本 83f651b1）：链路调用 `sensenova-6.8-flash-lite` → 200（6.7s，单次成功），响应 `model` 透传 `glm-5.2`，`reasoning_content` 思考字段正常，D1 遥测逐次落库。
 - 慢模型（如默认开思考模式的模型）可能接近 30 秒单次超时上限，触发链内重试或换家，属预期行为。
