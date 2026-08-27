@@ -3,6 +3,7 @@ import { NonRetryableError, RetryableError } from "../../src/errors";
 import { deepseekOfficial } from "../../src/chat/providers/deepseek-official";
 import { gptsapi } from "../../src/chat/providers/gptsapi";
 import { openrouter } from "../../src/chat/providers/openrouter";
+import { sensenova } from "../../src/chat/providers/sensenova";
 import { siliconflow } from "../../src/chat/providers/siliconflow";
 import { zhipu } from "../../src/chat/providers/zhipu";
 import type { ChatRequest } from "../../src/chat/types";
@@ -241,5 +242,55 @@ describe("zhipu", () => {
   it("maps non-JSON response to RetryableError", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
     await expect(zhipu.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+});
+
+describe("sensenova", () => {
+  const env: Env = { AUTH_TOKENS: "", SENSENOVA_API_KEY: "sn-test" };
+
+  it("sends sanitized body with rewritten model to the sensenova endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "r6", choices: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const req: ChatRequest = {
+      ...baseReq,
+      response_format: { type: "json_schema", json_schema: { name: "s" } },
+      tools: [{ type: "function" }],
+    };
+
+    const res = await sensenova.chat(req, env, signal);
+
+    expect(res).toEqual({ id: "r6", choices: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://token.sensenova.cn/v1/chat/completions");
+    const sent = JSON.parse(String(init.body));
+    expect(sent.model).toBe("sensenova-6.8-flash-lite"); // 改写为上游 model
+    expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } }); // 占位全 true；Task 2 实测校准后如有变化同步调整
+    expect(sent.tools).toEqual([{ type: "function" }]); // tools 支持 → 保留
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer sn-test");
+  });
+
+  it("throws NonRetryableError when api key is not configured", async () => {
+    await expect(sensenova.chat(baseReq, { AUTH_TOKENS: "" }, signal)).rejects.toThrow(NonRetryableError);
+  });
+
+  it("maps 429 to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(429, { error: "rate limited" })));
+    await expect(sensenova.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+
+  it("maps 400 to NonRetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { error: "bad request" })));
+    await expect(sensenova.chat(baseReq, env, signal)).rejects.toThrow(NonRetryableError);
+  });
+
+  it("maps network failure to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    await expect(sensenova.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+
+  it("maps non-JSON response to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
+    await expect(sensenova.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
   });
 });

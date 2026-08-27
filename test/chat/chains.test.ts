@@ -14,6 +14,10 @@ describe("getChain", () => {
     expect(getChain("glm-4.7-flash").map((p) => p.id)).toEqual(["zhipu", "agnes", "gptsapi"]);
   });
 
+  it("maps sensenova-6.8-flash-lite to the sensenova-first chain", () => {
+    expect(getChain("sensenova-6.8-flash-lite").map((p) => p.id)).toEqual(["sensenova", "agnes", "gptsapi"]);
+  });
+
   it("falls back to the agnes chain for unknown models", () => {
     expect(getChain("whatever")).toBe(FALLBACK_CHAIN);
     expect(FALLBACK_CHAIN.map((p) => p.id)).toEqual(["agnes"]);

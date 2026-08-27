@@ -3,6 +3,7 @@ import { agnes } from "./providers/agnes";
 import { deepseekOfficial } from "./providers/deepseek-official";
 import { gptsapi } from "./providers/gptsapi";
 import { openrouter } from "./providers/openrouter";
+import { sensenova } from "./providers/sensenova";
 import { siliconflow } from "./providers/siliconflow";
 import { zhipu } from "./providers/zhipu";
 
@@ -17,6 +18,7 @@ export const CHAINS: Record<string, readonly ChatProvider[]> = {
   "Qwen/Qwen3-8B": [siliconflow, agnes, gptsapi],
   "gpt-5.4-nano": [gptsapi, agnes, siliconflow],
   "glm-4.7-flash": [zhipu, agnes, gptsapi],
+  "sensenova-6.8-flash-lite": [sensenova, agnes, gptsapi],
 };
 
 /** 未注册的逻辑 model 统一回落到 agnes。 */
