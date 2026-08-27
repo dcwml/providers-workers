@@ -265,7 +265,7 @@ describe("sensenova", () => {
     expect(url).toBe("https://token.sensenova.cn/v1/chat/completions");
     const sent = JSON.parse(String(init.body));
     expect(sent.model).toBe("sensenova-6.8-flash-lite"); // 改写为上游 model
-    expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } }); // 占位全 true；Task 2 实测校准后如有变化同步调整
+    expect(sent.response_format).toEqual({ type: "json_object" }); // jsonSchema 不支持（实测 2026-08-27）→ 降级 json_object
     expect(sent.tools).toEqual([{ type: "function" }]); // tools 支持 → 保留
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer sn-test");
   });
