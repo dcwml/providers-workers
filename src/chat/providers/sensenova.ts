@@ -9,19 +9,22 @@ import { sanitizeRequest } from "../sanitize";
 import type { ChatProvider, ChatResponse } from "../types";
 
 const BASE_URL = "https://token.sensenova.cn/v1";
-const UPSTREAM_MODEL = "sensenova-6.8-flash-lite";
+// 上游为商汤托管的 glm-5.2（Z.ai 系）；逻辑链键名保留 "sensenova-6.8-flash-lite" 兼容既有调用方
+const UPSTREAM_MODEL = "glm-5.2";
 const ENV_KEY = "SENSENOVA_API_KEY";
 
 export const sensenova: ChatProvider = {
   id: "sensenova",
-  // 四项能力经 scripts/probe.ts 探测 + curl 判别实测验证（2026-08-27）：
-  // systemPrompt=true（probe supported）
-  // tools=true（probe supported，实际返回 get_weather tool_calls，行为已验证）
-  // jsonObject=true（curl 复测 200 耗时 22.7s，content 为合法 JSON {"ok": true}；probe 首测 30s 超时系默认思考模式耗时所致）
-  // jsonSchema=false（probe rejected + fruit=banana 严格 schema 判别双重确认：上游 400
-  //   guided_grammar compile_grammar_error: No module named 'xgrammar'，参数形状整体不被支持，sanitize 自动降级 json_object）
-  // 运维观察：默认开思考模式，响应含 reasoning 字段，单次耗时可达 22s+，接近网关 30s 超时上限
-  capabilities: { systemPrompt: true, tools: true, jsonObject: true, jsonSchema: false },
+  // 四项能力经 scripts/probe.ts 探测 + curl 判别实测验证（glm-5.2，2026-08-27）：
+  // systemPrompt=true（curl 复测 200，content 仅 "pong"，system 消息生效；probe 首测 429 配额后复测）
+  // tools=true（probe supported，实际返回 tool_calls，行为已验证）
+  // jsonObject=true（probe supported，输出为合法 JSON）
+  // jsonSchema=true（fruit=banana 严格 schema 判别：提示词仅要求自我介绍，思考过程未提 banana，
+  //   content 却输出符合 schema 的 {"fruit":"banana",...}——解码层真执行约束，非被忽略）
+  // 历史：上游原为 sensenova-6.8-flash-lite（jsonSchema=false，引擎缺 xgrammar 400；见 2026-08-27 完成报告）
+  // 运维观察：glm-5.2 思考字段名为 reasoning_content，单次 1-11s；商汤工作区配额窗口较紧，
+  //   连续请求易 429 insufficient_quota（分钟级恢复，网关重试间隔 1s 可能仍在窗口内→耗尽后降级下家）
+  capabilities: { systemPrompt: true, tools: true, jsonObject: true, jsonSchema: true },
   async chat(req, env, signal) {
     const apiKey = env[ENV_KEY];
     if (!apiKey) throw new NonRetryableError(`${ENV_KEY} is not configured`);

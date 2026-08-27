@@ -90,3 +90,19 @@ master（spec/plan）：
 
 1. 思考模式延迟问题：调用方可尝试显式传商汤支持的关闭思考参数（如有）——网关零注入设计，不代为注入；默认请求单次尝试有超时风险（生产已实证首试 30s 超时后重试成功的路径）。
 2. 冒烟用网关 token 已出现在聊天记录，如介意可在 /admin 后台禁用或轮换。
+
+## 后续变更：上游切 glm-5.2 + 链扩 5 家（2026-08-27，用户变更 + 同步验收，未部署）
+
+用户调整（本地）：
+
+- `src/chat/chains.ts`：五条链全部扩为 5 家（尾部追加 sensenova/zhipu 兑底）。
+- `src/chat/providers/sensenova.ts`：UPSTREAM_MODEL 由 `sensenova-6.8-flash-lite` 改为商汤托管的 `glm-5.2`（Z.ai 系），逻辑链键名保留不变。
+
+同步处理：
+
+- **AGENTS.md 中用户误写的生产 token 明文行已删除**（git 跟踪文件，提交即泄露；.dev.vars 注释档已有同值，无损失）。
+- capabilities 按 glm-5.2 重新实测校准：**四项全 true**——systemPrompt（curl 复测 200，content 仅 "pong"）、tools（probe supported，返回 tool_calls）、jsonObject（probe supported）、jsonSchema（fruit=banana 严格 schema 判别：思考过程未提 banana，content 输出符合 schema 的 `{"fruit":"banana",...}`，解码层真执行约束；与 flash-lite 的引擎 400 xgrammar 缺失不同，glm-5.2 引擎支持）。probe 首测遇 429（BurstRate + insufficient_quota），复测时避开分钟级配额窗口后全部通过。
+- glm-5.2 行为观察：思考字段名 `reasoning_content`（非 flash-lite 的 `reasoning`），reasoning_tokens 统计正常，单次 1-11s（远快于 flash-lite 的 ~20s）；商汤工作区配额窗口紧（连续 2-3 请求即 429 insufficient_quota，分钟级恢复）。
+- 测试同步：chains.test.ts 三条链断言 + sensenova 链断言改 5 家；providers.test.ts 成功路径断言 model→`glm-5.2`、response_format→json_schema 原样保留。`npm run typecheck && npm test` 22 文件 280/280 全绿。
+- 文档同步：README 配置表、docs/API-chat.md（能力说明/链表/对照表/运维注意/生产现状）。
+- 运维提醒：链扩 5 家后全链失败最坏耗时显著变长（每家最多 3 次×30s）；zhipu/sensenova 的 429 配额类错误在链尾兑底时成功率存疑。

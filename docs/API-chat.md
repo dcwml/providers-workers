@@ -43,7 +43,7 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 
 ### 能力裁剪（发送前自动进行）
 
-每家供应商声明四项能力（systemPrompt / tools / jsonObject / jsonSchema，均经实测确认）。发送前网关按目标供应商的能力裁剪请求：不支持的参数直接删除；`response_format.type: json_schema` 不支持时降级为 `json_object`；不支持 system 消息时并入首条 user 消息；随后把 `model` 改写为该供应商的上游 model。链内 agnes / gptsapi / siliconflow 四项能力全部支持；zhipu 与 sensenova 不支持 `jsonSchema`（请求带 `json_schema` 会降级为 `json_object`），其余三项支持。
+每家供应商声明四项能力（systemPrompt / tools / jsonObject / jsonSchema，均经实测确认）。发送前网关按目标供应商的能力裁剪请求：不支持的参数直接删除；`response_format.type: json_schema` 不支持时降级为 `json_object`；不支持 system 消息时并入首条 user 消息；随后把 `model` 改写为该供应商的上游 model。链内 agnes / gptsapi / siliconflow / sensenova 四项能力全部支持；zhipu 不支持 `jsonSchema`（`glm-4.7-flash` 请求带 `json_schema` 会降级为 `json_object`），其余三项支持。
 
 ## 响应格式
 
@@ -112,11 +112,11 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 
 | 逻辑 model | 供应商链（降级顺序） |
 | --- | --- |
-| `agnes-2.0-flash` | agnes → gptsapi → siliconflow |
-| `Qwen/Qwen3-8B` | siliconflow → agnes → gptsapi |
-| `gpt-5.4-nano` | gptsapi → agnes → siliconflow |
-| `glm-4.7-flash` | zhipu → agnes → gptsapi |
-| `sensenova-6.8-flash-lite` | sensenova → agnes → gptsapi |
+| `agnes-2.0-flash` | agnes → gptsapi → siliconflow → sensenova → zhipu |
+| `Qwen/Qwen3-8B` | siliconflow → agnes → gptsapi → sensenova → zhipu |
+| `gpt-5.4-nano` | gptsapi → agnes → siliconflow → sensenova → zhipu |
+| `glm-4.7-flash` | zhipu → agnes → gptsapi → siliconflow → sensenova |
+| `sensenova-6.8-flash-lite` | sensenova → agnes → gptsapi → siliconflow → zhipu |
 | 其它任意未注册 model | agnes（统一回落链） |
 
 注意与 embeddings/rerank 的区别：chat 对未注册的 model **不报 400**，而是统一回落到 agnes 单家链。
@@ -134,9 +134,9 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 | gptsapi | `gpt-5.4-nano` |
 | siliconflow | `Qwen/Qwen3.5-4B` |
 | zhipu | `glm-4.7-flash` |
-| sensenova | `sensenova-6.8-flash-lite` |
+| sensenova | `glm-5.2`（商汤托管；逻辑链键名保留 `sensenova-6.8-flash-lite`） |
 
-注意：逻辑 model `Qwen/Qwen3-8B` 的键名保留旧称以兼容既有调用方，其 siliconflow 上游已换为 `Qwen/Qwen3.5-4B`——响应 `model` 字段透传显示的是新上游名。`glm-4.7-flash` 上游默认开启思考模式（单次约 38–49s，超网关 30s 超时上限），不带 `thinking` 参数的默认请求会超时并降级到链内下一家；调用方显式传 `thinking: {"type": "disabled"}` 可透传生效。`sensenova-6.8-flash-lite` 同样默认开思考模式（单次约 20s，思考字段名为 `reasoning`），贴近 30s 上限时首试可能超时并触发重试（生产实测：首试 30s 超时 → 重试成功，总耗时约 52s）。
+注意：逻辑 model `Qwen/Qwen3-8B` 的键名保留旧称以兼容既有调用方，其 siliconflow 上游已换为 `Qwen/Qwen3.5-4B`——响应 `model` 字段透传显示的是新上游名；`sensenova-6.8-flash-lite` 同理，其 sensenova 上游已换为商汤托管的 `glm-5.2`（思考字段 `reasoning_content`，单次实测 1-11s，四项能力全支持）。`glm-4.7-flash` 上游默认开启思考模式（单次约 38–49s，超网关 30s 超时上限），不带 `thinking` 参数的默认请求会超时并降级到链内下一家；调用方显式传 `thinking: {"type": "disabled"}` 可透传生效。商汤工作区配额窗口较紧，连续请求易 429 `insufficient_quota`（分钟级恢复；网关对 429 按 1s 间隔重试 2 次，可能仍在配额窗口内→耗尽后降级下家）。链扩为 5 家后，全链失败的最坏耗时显著变长（每家最多 3 次×30s），调用方 HTTP 客户端需设置足够超时。
 
 （代码中另有 openrouter、deepseek-official 两家供应商文件，当前未启用在任何链中，属预留示例。）
 
@@ -195,5 +195,6 @@ curl -X POST "https://api.oklapzlj.com/v1/chat/completions" \
 - 五家链内供应商密钥均已配置（含 2026-08-27 上线的 sensenova）。
 - `glm-4.7-flash`（`thinking` 关闭）实测 200；上游偶发 429（访问量过大）时重试 2 次后按设计降级到 agnes，均实测确认（2026-08-21）。
 - `Qwen/Qwen3-8B` 实测 200，响应 `model` 为 `Qwen/Qwen3.5-4B`（siliconflow 上游已换新模型，逻辑名保留旧称）。
-- `sensenova-6.8-flash-lite` 实测 200（2026-08-27）：链路真发总耗时 51.9s（首试 30s 超时 → 重试成功，D1 遥测逐次落库）；`?provider=sensenova` 隔离路径单次 20.8s 成功。
+- `sensenova-6.8-flash-lite`（时为 flash-lite 上游）实测 200（2026-08-27）：链路真发总耗时 51.9s（首试 30s 超时 → 重试成功，D1 遥测逐次落库）；`?provider=sensenova` 隔离路径单次 20.8s 成功。
+- **上游已切 glm-5.2 + 链扩 5 家（2026-08-27 本地变更，尚未部署生产）**：本地实测 glm-5.2 四项能力全支持（jsonSchema 判别通过）、单次 1-11s；生产验证待部署后补充。
 - 慢模型（如默认开思考模式的模型）可能接近 30 秒单次超时上限，触发链内重试或换家，属预期行为。

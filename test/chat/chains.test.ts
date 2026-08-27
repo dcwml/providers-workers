@@ -7,15 +7,15 @@ describe("getChain", () => {
   });
 
   it("maps gpt-5.4-nano to the gptsapi-first fallback chain", () => {
-    expect(getChain("gpt-5.4-nano").map((p) => p.id)).toEqual(["gptsapi", "agnes", "siliconflow"]);
+    expect(getChain("gpt-5.4-nano").map((p) => p.id)).toEqual(["gptsapi", "agnes", "siliconflow", "sensenova", "zhipu"]);
   });
 
   it("maps glm-4.7-flash to the zhipu-first chain", () => {
-    expect(getChain("glm-4.7-flash").map((p) => p.id)).toEqual(["zhipu", "agnes", "gptsapi"]);
+    expect(getChain("glm-4.7-flash").map((p) => p.id)).toEqual(["zhipu", "agnes", "gptsapi", "siliconflow", "sensenova"]);
   });
 
   it("maps sensenova-6.8-flash-lite to the sensenova-first chain", () => {
-    expect(getChain("sensenova-6.8-flash-lite").map((p) => p.id)).toEqual(["sensenova", "agnes", "gptsapi"]);
+    expect(getChain("sensenova-6.8-flash-lite").map((p) => p.id)).toEqual(["sensenova", "agnes", "gptsapi", "siliconflow", "zhipu"]);
   });
 
   it("falls back to the agnes chain for unknown models", () => {

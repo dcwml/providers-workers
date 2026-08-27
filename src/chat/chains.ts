@@ -14,11 +14,11 @@ import { zhipu } from "./providers/zhipu";
 export const CHAINS: Record<string, readonly ChatProvider[]> = {
   // "sample-chat": [openrouter, deepseekOfficial, siliconflow],
   // "sample-reasoning": [deepseekOfficial, openrouter],
-  "agnes-2.0-flash": [agnes, gptsapi, siliconflow],
-  "Qwen/Qwen3-8B": [siliconflow, agnes, gptsapi],
-  "gpt-5.4-nano": [gptsapi, agnes, siliconflow],
-  "glm-4.7-flash": [zhipu, agnes, gptsapi],
-  "sensenova-6.8-flash-lite": [sensenova, agnes, gptsapi],
+  "agnes-2.0-flash": [agnes, gptsapi, siliconflow, sensenova, zhipu],
+  "Qwen/Qwen3-8B": [siliconflow, agnes, gptsapi, sensenova, zhipu],
+  "gpt-5.4-nano": [gptsapi, agnes, siliconflow, sensenova, zhipu],
+  "glm-4.7-flash": [zhipu, agnes, gptsapi, siliconflow, sensenova],
+  "sensenova-6.8-flash-lite": [sensenova, agnes, gptsapi, siliconflow, zhipu],
 };
 
 /** 未注册的逻辑 model 统一回落到 agnes。 */

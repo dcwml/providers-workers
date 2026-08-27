@@ -264,8 +264,8 @@ describe("sensenova", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://token.sensenova.cn/v1/chat/completions");
     const sent = JSON.parse(String(init.body));
-    expect(sent.model).toBe("sensenova-6.8-flash-lite"); // 改写为上游 model
-    expect(sent.response_format).toEqual({ type: "json_object" }); // jsonSchema 不支持（实测 2026-08-27）→ 降级 json_object
+    expect(sent.model).toBe("glm-5.2"); // 改写为上游 model（商汤托管 glm-5.2，逻辑键名保留 sensenova-6.8-flash-lite）
+    expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } }); // jsonSchema 支持（glm-5.2 实测 2026-08-27）→ 原样保留
     expect(sent.tools).toEqual([{ type: "function" }]); // tools 支持 → 保留
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer sn-test");
   });
