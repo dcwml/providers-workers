@@ -8,7 +8,7 @@ import type { EmailProvider, PreparedMail } from "../types";
 
 const BASE_URL = "https://api.sendgrid.com/v3";
 const ENV_KEY = "SENDGRID_API_KEY";
-const FROM = { name: "Infility", address: "info@infility.cn" } as const;
+const FROM = { name: "Provider", address: "provider@em8487.oklapzlj.com" } as const;
 
 function toApiAddress(a: { name?: string; address: string }): { email: string; name?: string } {
   return a.name === undefined ? { email: a.address } : { email: a.address, name: a.name };

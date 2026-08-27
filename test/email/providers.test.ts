@@ -48,7 +48,7 @@ describe("sendgrid email provider", () => {
           bcc: [{ email: "d@x.com" }],
         },
       ],
-      from: { email: "info@infility.cn", name: "Infility" },
+      from: { email: "provider@em8487.oklapzlj.com", name: "Provider" },
       subject: "Hi",
       content: [{ type: "text/html", value: "<p>Hello</p>" }],
     });

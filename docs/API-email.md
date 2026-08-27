@@ -36,7 +36,7 @@ token 由管理员经 /admin 后台创建与停用。缺失或错误返回 `401 
 
 **去重规则**：按地址部分忽略大小写比较；`to` > `cc` > `bcc`——出现在 `to` 的地址自动从 `cc`/`bcc` 移除，出现在 `cc` 的自动从 `bcc` 移除；同组内重复只保留首次出现（保留其名称写法）。
 
-发件人由网关内置（当前 exmail 与 sendgrid 均为 `Infility <info@infility.cn>`），请求体**不接受** `from` 字段。不支持附件（attachment）。
+发件人由网关内置（各供应商不同：exmail 为 `Infility <info@infility.cn>`，sendgrid 为 `Provider <provider@em8487.oklapzlj.com>`——SendGrid 认证发件地址），请求体**不接受** `from` 字段。不支持附件（attachment）。
 
 ```json
 {
@@ -108,7 +108,7 @@ curl -X POST "https://api.oklapzlj.com/v1/send-email?provider=exmail" \
 
 ## 生产现状
 
-截至 2026-08-27（本地实测，生产尚未部署）：
+截至 2026-08-27（生产已部署，api.oklapzlj.com 实测）：
 
-- **sendgrid**：本地 `wrangler dev` 实测真发成功（202 + `X-Message-Id`），降级与遥测接线正常。生产上线前需 `npx wrangler secret put SENDGRID_API_KEY`（生产 secret 当前未配置）。
+- **sendgrid**：生产实测真发成功（200 + `X-Message-Id`，message_id=kiR5Rz50Qgmx6XTQyBjneA）；生产 secret `SENDGRID_API_KEY` 已配置，遥测落库正常（exmail=fatal → sendgrid=ok）。
 - **exmail**：`EXMAIL_SMTP_PASSWORD` 未配置，缺 key 自动跳过（不影响 sendgrid 兜底）。配置后 SMTP 链路即可启用（465/SSL，AUTH PLAIN 优先 + LOGIN 回退）；发送前建议先用 `?provider=exmail` 隔离验证。
