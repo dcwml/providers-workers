@@ -134,6 +134,22 @@ describe("sendSmtpMail happy path (ssl/465)", () => {
     expect(decoded).toBe("Line1\r\nLine2");
   });
 
+  it("encodes display names containing RFC specials as encoded-words", async () => {
+    const socket = new FakeSocket();
+    scriptHappyPath(socket);
+    await sendSmtpMail(
+      { ...baseOptions, from: { name: "Doe, John", address: "user@test.example" } },
+      signal,
+      connectWith(socket),
+    );
+
+    const all = socket.written.join("");
+    const headers = all.slice(0, all.indexOf("\r\n\r\n"));
+    // 逗号是地址列表分隔符，含 specials 的 display-name 必须走 encoded-word 而非直出
+    expect(headers).toContain(`From: ${enc("Doe, John")} <user@test.example>`);
+    expect(headers).not.toContain("From: Doe, John <user@test.example>");
+  });
+
   it("uses text/html content type and folds long base64 bodies", async () => {
     const socket = new FakeSocket();
     scriptHappyPath(socket);

@@ -201,9 +201,11 @@ function formatAddress(a: ParsedAddress): string {
   return a.name === undefined ? a.address : `${encodeHeaderValue(a.name)} <${a.address}>`;
 }
 
-/** 头部值：纯 ASCII 可打印直接用，否则整段 encoded-word（=?UTF-8?B?...?=）。 */
+/** 头部值：字母数字与空格/连字符/下划线直出；其余（RFC specials、非 ASCII）整段 encoded-word
+ *  （=?UTF-8?B?...?=）。含 specials（如 display-name 中的逗号）直出会破坏地址列表语法，
+ *  encoded-word 内无分隔符语义，天然安全。 */
 function encodeHeaderValue(value: string): string {
-  if (/^[\x20-\x7E]*$/.test(value)) return value;
+  if (/^[A-Za-z0-9 _-]*$/.test(value)) return value;
   return `=?UTF-8?B?${base64Utf8(value)}?=`;
 }
 

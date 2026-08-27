@@ -67,7 +67,7 @@ migrations/       # D1 schema 迁移（wrangler d1 migrations）
 ### 错误与重试
 
 - 单家：最多 3 次请求（重试 2 次），间隔 1s（`DEFAULT_RETRY`）；runner 层逐家串行，第一家成功即返回，全链失败 → 502 附各家 `ProviderError` 明细。
-- chat 错误体为 OpenAI 风格 `{error:{message,type,code,provider_errors?}}`；read 为简化形 `{error:{message,provider_errors?}}`；embeddings/rerank 同 chat 的 OpenAI 风格（单家失败 502，code=`provider_failed`）。勿混用。
+- chat 错误体为 OpenAI 风格 `{error:{message,type,code,provider_errors?}}`；read 为简化形 `{error:{message,provider_errors?}}`；embeddings/rerank 同 chat 的 OpenAI 风格（单家失败 502，code=`provider_failed`）；email 同 chat 的 OpenAI 风格（全链失败 502，code=`all_providers_failed`；投递状态未知 502，code=`delivery_uncertain`）。勿混用。
 - 请求体防御：入口解析后访问属性前先做 `?? {}` 守卫（合法 JSON `null` 体会解析成功）。
 
 ## 密钥与环境变量
