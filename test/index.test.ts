@@ -4,6 +4,7 @@ import type { EmailOutcome } from "../src/email/runner";
 import type { EmbeddingsOutcome } from "../src/embeddings/runner";
 import type { ReadOutcome } from "../src/read/runner";
 import type { RerankOutcome } from "../src/rerank/runner";
+import type { SearchOutcome } from "../src/search/runner";
 import { TOKEN_LOOKUP_SQL } from "../src/auth";
 import type { WorkerEnv } from "../src/env";
 import { INSERT_REQUEST_SQL } from "../src/telemetry";
@@ -14,10 +15,12 @@ const state = vi.hoisted(() => ({
   readOutcome: undefined as unknown as ReadOutcome,
   embeddingsOutcome: undefined as unknown as EmbeddingsOutcome,
   rerankOutcome: undefined as unknown as RerankOutcome,
+  searchOutcome: undefined as unknown as SearchOutcome,
   chatOnly: undefined as unknown,
   readOnly: undefined as unknown,
   embeddingsProvider: undefined as unknown,
   rerankProvider: undefined as unknown,
+  searchOnly: undefined as unknown,
   emailOutcome: undefined as unknown as EmailOutcome,
   emailOnly: undefined as unknown,
   emailMail: undefined as unknown,
@@ -49,6 +52,14 @@ vi.mock("../src/rerank/runner", () => ({
     state.rerankProvider = provider;
     return state.rerankOutcome;
   },
+}));
+vi.mock("../src/search/runner", () => ({
+  runSearch: async (_req: unknown, _env: unknown, _retry: unknown, only: unknown) => {
+    state.searchOnly = only;
+    return state.searchOutcome;
+  },
+  getSearchProviderById: (id: string) => (id === "anysearch" ? { id } : undefined),
+  SEARCH_PROVIDER_IDS: ["anysearch"],
 }));
 vi.mock("../src/email/runner", () => ({
   runEmail: async (mail: unknown, _env: unknown, only: unknown) => {
@@ -86,10 +97,12 @@ beforeEach(() => {
   state.readOutcome = { kind: "ok", status: 200, markdown: "# default", providerOk: "p-default" };
   state.embeddingsOutcome = { kind: "ok", status: 200, body: { data: [] }, providerOk: "p-default" };
   state.rerankOutcome = { kind: "ok", status: 200, body: { results: [] }, providerOk: "p-default" };
+  state.searchOutcome = { kind: "ok", status: 200, body: { code: 0, data: { results: [] } }, providerOk: "anysearch" };
   state.chatOnly = undefined;
   state.readOnly = undefined;
   state.embeddingsProvider = undefined;
   state.rerankProvider = undefined;
+  state.searchOnly = undefined;
   state.emailOutcome = { kind: "ok", status: 200, body: { accepted: true, provider: "exmail" }, providerOk: "exmail" };
   state.emailOnly = undefined;
   state.emailMail = undefined;
@@ -250,6 +263,65 @@ describe("read endpoint", () => {
     };
     const res = await handler.fetch(post("/v1/read", { url: "https://example.com" }), env, makeFakeCtx().ctx);
     expect(res.status).toBe(502);
+  });
+});
+
+describe("search endpoint", () => {
+  it("returns upstream envelope as JSON with providerOk", async () => {
+    const res = await handler.fetch(post("/v1/search", { query: "go 1.26 release notes" }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(await res.json()).toEqual({ code: 0, data: { results: [] } });
+  });
+
+  it("rejects missing query with 400", async () => {
+    const res = await handler.fetch(post("/v1/search", {}), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects non-string query with 400", async () => {
+    const res = await handler.fetch(post("/v1/search", { query: 42 }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects whitespace-only query with 400", async () => {
+    const res = await handler.fetch(post("/v1/search", { query: "   " }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid max_results with 400", async () => {
+    const res = await handler.fetch(post("/v1/search", { query: "q", max_results: 11 }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+    const res2 = await handler.fetch(post("/v1/search", { query: "q", max_results: "five" }), env, makeFakeCtx().ctx);
+    expect(res2.status).toBe(400);
+  });
+
+  it("rejects a valid JSON null body with 400", async () => {
+    const res = await handler.fetch(post("/v1/search", null), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid JSON with 400", async () => {
+    const req = new Request("https://gw.example/v1/search", {
+      method: "POST",
+      headers: { authorization: "Bearer sekret", "content-type": "application/json" },
+      body: "{not json",
+    });
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+  });
+
+  it("maps all-failed outcome to 502 with provider_errors", async () => {
+    state.searchOutcome = {
+      kind: "all-failed",
+      status: 502,
+      errors: [{ provider: "anysearch", message: "dead" }],
+    };
+    const res = await handler.fetch(post("/v1/search", { query: "q" }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: { message: string; provider_errors: unknown[] } };
+    expect(body.error.message).toBe("all providers failed");
+    expect(body.error.provider_errors).toEqual([{ provider: "anysearch", message: "dead" }]);
   });
 });
 
@@ -655,6 +727,28 @@ describe("provider override (?provider=)", () => {
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toContain("unknown provider: bogus");
     expect(body.error.message).toContain("jina, tavily, firecrawl");
+  });
+
+  it("search: resolves provider and passes it to runSearch", async () => {
+    const res = await handler.fetch(
+      post("/v1/search?provider=anysearch", { query: "q" }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(state.searchOnly).toEqual({ id: "anysearch" });
+  });
+
+  it("search: rejects unknown provider with 400", async () => {
+    const res = await handler.fetch(
+      post("/v1/search?provider=bogus", { query: "q" }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("unknown provider: bogus");
+    expect(body.error.message).toContain("anysearch");
   });
 
   it("chat: resolves provider and passes it to runChat", async () => {

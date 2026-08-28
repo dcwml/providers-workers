@@ -41,6 +41,7 @@ migrations/       # D1 schema 迁移（wrangler d1 migrations）
   embeddings/     # types / models（model→单 provider，无链）/ runner / providers/
   rerank/         # types / models（model→单 provider，无链）/ runner / providers/
   read/           # types / runner（固定链）/ providers/（jina、tavily、firecrawl）
+  search/         # types / runner（固定链）/ providers/（anysearch）
   email/          # types / address（地址解析+去重）/ runner（链）/ smtp-client（SMTP 协议库）/ providers/（exmail、sendgrid）
 ```
 

@@ -14,6 +14,7 @@
 | POST | `/v1/rerank` | 文档重排序。按 `model` 映射到单个 provider，无链、无降级。当前：`BAAI/bge-reranker-v2-m3` → siliconflow。 | [API-rerank.md](./API-rerank.md) |
 | POST | `/v1/send-email` | 发送邮件（`text`/`html` 二选一，`to`/`cc`/`bcc` 跨组去重，无附件）。供应商链固定：exmail → sendgrid；单次尝试 + 安全降级。 | [API-email.md](./API-email.md) |
 | POST | `/v1/read` | 给一个 URL，返回网页正文 Markdown。供应商链固定：jina → tavily → firecrawl。 | [API-read.md](./API-read.md) |
+| POST | `/v1/search` | 网页搜索（`query` 必填，可选 `max_results` 1-10）。返回上游 JSON 信封，原样透传。供应商链固定：anysearch。 | [API-search.md](./API-search.md) |
 | GET | `/admin` | 管理后台页面（token 管理）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`，非业务端点。 | — |
 
 ## 通用约定
@@ -34,7 +35,7 @@
 **错误体风格**（勿混用）：
 
 - chat / embeddings / rerank / email：OpenAI 风格 `{ "error": { "message", "type", "code", "provider_errors?" } }`
-- read：简化形 `{ "error": { "message", "provider_errors?" } }`
+- read / search：简化形 `{ "error": { "message", "provider_errors?" } }`
 
 **重试策略总览**：单家供应商最多 3 次尝试（首次 + 2 次重试，间隔 1 秒），单次上游超时 30 秒；网络错/超时/5xx/429 触发重试，其它 4xx 不重试。chat/read 在供应商之间串行降级；embeddings/rerank 为单 provider 形式，失败即 502。email 例外：每家恰好一次、绝不重试；「确定没发出」才降级，「不确定」（投递状态未知）中止并返回 502 `delivery_uncertain`（详见 API-email.md）。
 

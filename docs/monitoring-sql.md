@@ -18,7 +18,7 @@ npx wrangler d1 execute providers_db --local --command "<SQL>"
 
 ## 表速览
 
-- `requests`：每次网关调用一行。`feature`(chat/read/embeddings/rerank/email)、`endpoint`、`model`、`token_id`(关联 tokens，删除后为 NULL)、`status`(最终响应码；401 表示鉴权失败)、`provider_ok`(成功供应商；全失败/非业务失败为 NULL)、`elapsed_ms`。
+- `requests`：每次网关调用一行。`feature`(chat/read/search/embeddings/rerank/email)、`endpoint`、`model`、`token_id`(关联 tokens，删除后为 NULL)、`status`(最终响应码；401 表示鉴权失败)、`provider_ok`(成功供应商；全失败/非业务失败为 NULL)、`elapsed_ms`。
 - `provider_attempts`：每次上游尝试一行（含重试）。`provider`、`model`、`attempt`(第几次)、`result`(ok/retry/fatal)、`elapsed_ms`、`error`。
 - `tokens`：token 登记表。`token_mask` 用于人工比对；完整 token 与哈希不入查询结果。
 

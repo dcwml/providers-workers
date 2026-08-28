@@ -15,6 +15,8 @@ import type { EmbeddingsProvider, EmbeddingsRequest } from "./embeddings/types";
 import type { WorkerEnv } from "./env";
 import { getReaderProviderById, READER_PROVIDER_IDS, runRead } from "./read/runner";
 import type { ReaderProvider } from "./read/types";
+import { SEARCH_PROVIDER_IDS, getSearchProviderById, runSearch } from "./search/runner";
+import type { SearchProvider } from "./search/types";
 import {
   RERANK_MODEL_IDS,
   RERANK_PROVIDER_IDS,
@@ -214,6 +216,67 @@ async function handleRead(
     }),
     providerOk: outcome.providerOk,
   };
+}
+
+async function handleSearch(
+  request: Request,
+  env: WorkerEnv,
+  providerParam: string | null,
+  recorder: RequestRecorder,
+  meta: RecorderMeta,
+): Promise<HandlerResult> {
+  // ?provider= 覆盖（测试用）：隔离只跑指定单家。未知 provider 直接 400。
+  let only: SearchProvider | undefined;
+  if (providerParam !== null) {
+    only = getSearchProviderById(providerParam);
+    if (!only) {
+      return {
+        response: json(400, {
+          error: {
+            message: `unknown provider: ${providerParam}; valid providers: ${SEARCH_PROVIDER_IDS.join(", ")}`,
+          },
+        }),
+      };
+    }
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return { response: json(400, { error: { message: "invalid JSON body" } }) };
+  }
+
+  const req = (body ?? {}) as { query?: unknown; max_results?: unknown };
+  if (typeof req.query !== "string" || req.query.trim().length === 0) {
+    return { response: json(400, { error: { message: "query must be a non-empty string" } }) };
+  }
+  let maxResults: number | undefined;
+  if (req.max_results !== undefined) {
+    if (
+      typeof req.max_results !== "number" ||
+      !Number.isInteger(req.max_results) ||
+      req.max_results < 1 ||
+      req.max_results > 10
+    ) {
+      return {
+        response: json(400, {
+          error: { message: "max_results must be an integer between 1 and 10" },
+        }),
+      };
+    }
+    maxResults = req.max_results;
+  }
+
+  const outcome = await runSearch({ query: req.query, maxResults }, env, undefined, only, recorder);
+  if (outcome.kind === "all-failed") {
+    return {
+      response: json(502, {
+        error: { message: "all providers failed", provider_errors: outcome.errors },
+      }),
+    };
+  }
+  return { response: json(200, outcome.body), providerOk: outcome.providerOk };
 }
 
 async function handleEmbeddings(
@@ -571,6 +634,11 @@ export default {
       if (url.pathname === "/v1/read") {
         return withRecording(request, env, ctx, url.pathname, "read", (recorder, meta) =>
           handleRead(request, env, providerParam, recorder, meta),
+        );
+      }
+      if (url.pathname === "/v1/search") {
+        return withRecording(request, env, ctx, url.pathname, "search", (recorder, meta) =>
+          handleSearch(request, env, providerParam, recorder, meta),
         );
       }
       if (url.pathname === "/v1/embeddings") {

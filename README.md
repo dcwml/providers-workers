@@ -8,6 +8,7 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 | --- | --- | --- |
 | POST | `/v1/chat/completions` | OpenAI 兼容（仅非流式）。按 `model` 选择供应商链，自动重试与降级，响应原样透传。 |
 | POST | `/v1/read` | body `{"url": "https://..."}`，返回页面 Markdown 正文（`text/markdown`）。供应商链固定：jina → tavily → firecrawl。 |
+| POST | `/v1/search` | body `{"query": "..."}`，可选 `max_results`（1-10）。返回上游搜索结果 JSON（原样透传）。供应商链固定：anysearch（支持匿名访问，配 key 提升限额）。 |
 | POST | `/v1/embeddings` | OpenAI 兼容 embeddings。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-m3` → siliconflow；`jina-embeddings-v5-omni-small` → jina（多模态，`task`/`normalized` 透传）。 |
 | POST | `/v1/rerank` | 文档重排序（Jina/Cohere 风格：`query` + `documents`，可选 `top_n`/`return_documents`）。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-reranker-v2-m3` → siliconflow。 |
 | POST | `/v1/send-email` | 发送纯文本/HTML 邮件（无附件，`to`/`cc`/`bcc` 跨组去重）。供应商链固定：exmail → sendgrid；每家单次尝试 + 安全降级（投递状态未知时中止防重复发信）。 |
@@ -87,6 +88,7 @@ curl -s http://localhost:8787/v1/send-email \
 | `SENSENOVA_API_KEY` | chat 供应商 sensenova（上游模型 glm-5.2，商汤托管；逻辑链键名保留 sensenova-6.8-flash-lite） |
 | `JINA_API_KEY` | read 供应商 jina + embeddings 供应商 jina（上游模型 jina-embeddings-v5-omni-small）共用 |
 | `TAVILY_API_KEY` / `FIRECRAWL_API_KEY` | read 供应商 |
+| `ANYSEARCH_API_KEY` | search 供应商 anysearch（可选：官方支持匿名访问，未配置时低限流调用） |
 | `SENDGRID_API_KEY` | email 供应商 sendgrid（HTTP API 发信） |
 | `EXMAIL_SMTP_PASSWORD` | email 供应商 exmail（腾讯企业邮箱 SMTP 密码；后台开了安全登录时填客户端专用密码） |
 
