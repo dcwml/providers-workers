@@ -84,6 +84,7 @@ curl -s http://localhost:8787/v1/send-email \
 | `DEEPSEEK_API_KEY` | chat 示例供应商 deepseek-official |
 | `SILICONFLOW_API_KEY` | chat 供应商 siliconflow（上游模型 Qwen/Qwen3.5-4B）；embeddings 供应商 siliconflow（上游模型 BAAI/bge-m3）；rerank 供应商 siliconflow（上游模型 BAAI/bge-reranker-v2-m3） |
 | `GPTSAPI_API_KEY` | chat 供应商 gptsapi（上游模型 gpt-5.4-nano） |
+| `DOTS_API_KEY` | chat 供应商 dots（上游模型 dots3-note-prev，AskDianDian） |
 | `ZHIPU_API_KEY` | chat 供应商 zhipu（上游模型 glm-4.7-flash） |
 | `SENSENOVA_API_KEY` | chat 供应商 sensenova（上游模型 glm-5.2，商汤托管；逻辑链键名保留 sensenova-6.8-flash-lite） |
 | `JINA_API_KEY` | read 供应商 jina + embeddings 供应商 jina（上游模型 jina-embeddings-v5-omni-small）共用 |

@@ -112,11 +112,12 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 
 | 逻辑 model | 供应商链（降级顺序） |
 | --- | --- |
-| `agnes-2.0-flash` | agnes → gptsapi → siliconflow → sensenova → zhipu |
-| `Qwen/Qwen3-8B` | siliconflow → agnes → gptsapi → sensenova → zhipu |
-| `gpt-5.4-nano` | gptsapi → agnes → siliconflow → sensenova → zhipu |
-| `glm-4.7-flash` | zhipu → agnes → gptsapi → siliconflow → sensenova |
-| `sensenova-6.8-flash-lite` | sensenova → agnes → gptsapi → siliconflow → zhipu |
+| `agnes-2.0-flash` | agnes → dots → gptsapi → siliconflow → sensenova → zhipu |
+| `Qwen/Qwen3-8B` | siliconflow → agnes → dots → gptsapi → sensenova → zhipu |
+| `gpt-5.4-nano` | gptsapi → agnes → dots → siliconflow → sensenova → zhipu |
+| `glm-4.7-flash` | zhipu → agnes → dots → gptsapi → siliconflow → sensenova |
+| `sensenova-6.8-flash-lite` | sensenova → agnes → dots → gptsapi → siliconflow → zhipu |
+| `dots3-note-prev` | dots → agnes → gptsapi → siliconflow → sensenova → zhipu |
 | 其它任意未注册 model | agnes（统一回落链） |
 
 注意与 embeddings/rerank 的区别：chat 对未注册的 model **不报 400**，而是统一回落到 agnes 单家链。
@@ -131,12 +132,13 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 | provider | 上游 model |
 | --- | --- |
 | agnes | `agnes-2.0-flash` |
+| dots | `dots3-note-prev` |
 | gptsapi | `gpt-5.4-nano` |
 | siliconflow | `Qwen/Qwen3.5-4B` |
 | zhipu | `glm-4.7-flash` |
 | sensenova | `glm-5.2`（商汤托管；逻辑链键名保留 `sensenova-6.8-flash-lite`） |
 
-注意：逻辑 model `Qwen/Qwen3-8B` 的键名保留旧称以兼容既有调用方，其 siliconflow 上游已换为 `Qwen/Qwen3.5-4B`——响应 `model` 字段透传显示的是新上游名；`sensenova-6.8-flash-lite` 同理，其 sensenova 上游已换为商汤托管的 `glm-5.2`（思考字段 `reasoning_content`，单次实测 1-11s，四项能力全支持）。`glm-4.7-flash` 上游默认开启思考模式（单次约 38–49s，超网关 30s 超时上限），不带 `thinking` 参数的默认请求会超时并降级到链内下一家；调用方显式传 `thinking: {"type": "disabled"}` 可透传生效。商汤工作区配额窗口较紧，连续请求易 429 `insufficient_quota`（分钟级恢复；网关对 429 按 1s 间隔重试 2 次，可能仍在配额窗口内→耗尽后降级下家）。链扩为 5 家后，全链失败的最坏耗时显著变长（每家最多 3 次×30s），调用方 HTTP 客户端需设置足够超时。
+注意：逻辑 model `Qwen/Qwen3-8B` 的键名保留旧称以兼容既有调用方，其 siliconflow 上游已换为 `Qwen/Qwen3.5-4B`——响应 `model` 字段透传显示的是新上游名；`sensenova-6.8-flash-lite` 同理，其 sensenova 上游已换为商汤托管的 `glm-5.2`（思考字段 `reasoning_content`，单次实测 1-11s，四项能力全支持）。`glm-4.7-flash` 上游默认开启思考模式（单次约 38–49s，超网关 30s 超时上限），不带 `thinking` 参数的默认请求会超时并降级到链内下一家；调用方显式传 `thinking: {"type": "disabled"}` 可透传生效。商汤工作区配额窗口较紧，连续请求易 429 `insufficient_quota`（分钟级恢复；网关对 429 按 1s 间隔重试 2 次，可能仍在配额窗口内→耗尽后降级下家）。链扩为 5/6 家后，全链失败的最坏耗时显著变长（每家最多 3 次×30s），调用方 HTTP 客户端需设置足够超时。
 
 （代码中另有 openrouter、deepseek-official 两家供应商文件，当前未启用在任何链中，属预留示例。）
 
@@ -146,6 +148,7 @@ URL 追加 `?provider=<id>` 可强制只跑指定的一家，**不做降级**，
 
 ```
 POST /v1/chat/completions?provider=agnes
+POST /v1/chat/completions?provider=dots
 POST /v1/chat/completions?provider=gptsapi
 POST /v1/chat/completions?provider=siliconflow
 POST /v1/chat/completions?provider=zhipu

@@ -5,6 +5,7 @@ export interface Env {
   AGNES_API_KEY?: string;
   SILICONFLOW_API_KEY?: string;
   GPTSAPI_API_KEY?: string;
+  DOTS_API_KEY?: string;
   ZHIPU_API_KEY?: string;
   SENSENOVA_API_KEY?: string;
   JINA_API_KEY?: string;

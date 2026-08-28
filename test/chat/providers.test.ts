@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NonRetryableError, RetryableError } from "../../src/errors";
 import { deepseekOfficial } from "../../src/chat/providers/deepseek-official";
+import { dots } from "../../src/chat/providers/dots";
 import { gptsapi } from "../../src/chat/providers/gptsapi";
 import { openrouter } from "../../src/chat/providers/openrouter";
 import { sensenova } from "../../src/chat/providers/sensenova";
@@ -294,3 +295,54 @@ describe("sensenova", () => {
     await expect(sensenova.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
   });
 });
+
+describe("dots", () => {
+  const env: Env = { AUTH_TOKENS: "", DOTS_API_KEY: "dots-test" };
+
+  it("sends sanitized body with rewritten model to the dots endpoint with api-key header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "r_dots", choices: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const req: ChatRequest = {
+      ...baseReq,
+      response_format: { type: "json_schema", json_schema: { name: "s" } },
+      tools: [{ type: "function" }],
+    };
+
+    const res = await dots.chat(req, env, signal);
+
+    expect(res).toEqual({ id: "r_dots", choices: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://note3-prev-api.askdiandian.com/v1/chat/completions");
+    const sent = JSON.parse(String(init.body));
+    expect(sent.model).toBe("dots3-note-prev"); // 改写为上游 model
+    expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } }); // jsonSchema 原样保留
+    expect(sent.tools).toEqual([{ type: "function" }]); // tools 支持 → 保留
+    expect((init.headers as Record<string, string>)["api-key"]).toBe("dots-test");
+  });
+
+  it("throws NonRetryableError when api key is not configured", async () => {
+    await expect(dots.chat(baseReq, { AUTH_TOKENS: "" }, signal)).rejects.toThrow(NonRetryableError);
+  });
+
+  it("maps 429 to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(429, { error: "rate limited" })));
+    await expect(dots.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+
+  it("maps 400 to NonRetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { error: "bad request" })));
+    await expect(dots.chat(baseReq, env, signal)).rejects.toThrow(NonRetryableError);
+  });
+
+  it("maps network failure to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    await expect(dots.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+
+  it("maps non-JSON response to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
+    await expect(dots.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+});
+
