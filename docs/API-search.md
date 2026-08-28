@@ -1,6 +1,6 @@
 # /v1/search 网页搜索接口使用说明
 
-给一个查询词，返回搜索结果。底层是固定的搜索供应商链 **anysearch**（当前仅一家，链结构预留后续扩展），串行降级，第一家成功即返回。
+给一个查询词，返回搜索结果。底层是固定的搜索供应商链 **anysearch → firecrawl**，串行降级，第一家成功即返回。
 
 - 生产域名：`https://api.oklapzlj.com`
 - 路径：`POST /v1/search`（仅支持 POST，GET 及其它方法返回 404）
@@ -39,7 +39,9 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 成功（200）：
 
 - `Content-Type: application/json; charset=utf-8`
-- 响应体为 anysearch 的响应信封，原样透传：
+- 响应体为**当前成功那家供应商**的上游响应信封，原样透传：
+
+anysearch 成功时的信封：
 
 ```json
 {
@@ -54,7 +56,23 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 }
 ```
 
-字段以上游实际返回为准（`results` 元素常见 `title`/`url`/`content`，部分结果用 `snippet`）。空结果（`results` 为空数组）是正常响应，不算失败。
+字段以上游实际返回为准（`results` 元素常见 `title`/`url`/`content`，部分结果用 `snippet`）。
+
+firecrawl 成功时的信封：
+
+```json
+{
+  "success": true,
+  "data": {
+    "web": [
+      { "title": "...", "description": "...", "url": "https://..." }
+    ]
+  },
+  "creditsUsed": 2
+}
+```
+
+两家均以空结果集为正常响应（不算失败）。
 
 失败（4xx / 5xx）：
 
@@ -69,7 +87,8 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
   "error": {
     "message": "all providers failed",
     "provider_errors": [
-      { "provider": "anysearch", "message": "..." }
+      { "provider": "anysearch", "message": "..." },
+      { "provider": "firecrawl", "message": "..." }
     ]
   }
 }
@@ -83,17 +102,17 @@ token 由管理员下发（服务端可配置多个有效 token）。token 缺�
 | 400 | `invalid JSON body` | 请求体不是合法 JSON |
 | 400 | `query must be a non-empty string` | `query` 缺失、不是字符串或全空白 |
 | 400 | `max_results must be an integer between 1 and 10` | `max_results` 不是 1-10 的整数 |
-| 400 | `unknown provider: xxx; valid providers: anysearch` | `?provider=` 传了未知值 |
+| 400 | `unknown provider: xxx; valid providers: anysearch, firecrawl` | `?provider=` 传了未知值 |
 | 404 | `not found` | 方法不是 POST，或路径不对 |
 | 502 | `all providers failed` | 整条链全部失败，看 `provider_errors` 定位 |
 
 ## 降级与重试机制
 
-- 链顺序固定：**anysearch**（当前仅一家）。
+- 链顺序固定：**anysearch → firecrawl**。
 - 单家内部：最多 3 次尝试（首次 + 2 次重试），重试间隔 1 秒；每次上游请求 30 秒超时。
-- 仅可重试错误会触发重试：上游 5xx / 429、网络错误、响应非 JSON、HTTP 200 但信封 `code !== 0`（上游业务失败）。
+- 仅可重试错误会触发重试：上游 5xx / 429、网络错误、响应非 JSON、HTTP 200 但信封失败（anysearch `code !== 0`；firecrawl `success !== true`）。
 - 不可重试错误直接放弃该家：上游其它 4xx。
-- 密钥说明：anysearch 官方支持匿名访问（低限流）；未配置 `ANYSEARCH_API_KEY` 时照常调用，配置后才带 `Authorization: Bearer`。
+- 密钥说明：anysearch 官方支持匿名访问（低限流），未配置 `ANYSEARCH_API_KEY` 时照常调用，配置后才带 `Authorization: Bearer`；firecrawl 必须配 key，未配置 `FIRECRAWL_API_KEY` 时直接跳过该家换下家。
 
 ## 供应商隔离参数（调试用）
 
@@ -101,6 +120,7 @@ URL 追加 `?provider=<id>` 可强制只跑指定的一家，**不做降级**：
 
 ```
 POST /v1/search?provider=anysearch
+POST /v1/search?provider=firecrawl
 ```
 
 未知取值直接 400 并在 message 里列出合法 id。正常业务调用不要带此参数。

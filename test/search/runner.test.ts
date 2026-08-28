@@ -8,10 +8,15 @@ import { makeFakeCtx, makeFakeD1 } from "../helpers";
 // runner 在模块加载时构建 SEARCH_CHAIN，因此 mock 的 provider 用「委托 state」模式。
 const state = vi.hoisted(() => ({
   anysearchImpl: async (): Promise<{ body: unknown }> => ({ body: { code: 0, data: { results: [] } } }),
+  firecrawlImpl: async (): Promise<{ body: unknown }> => ({ body: { success: true, data: { web: [] } } }),
 }));
 
 vi.mock("../../src/search/providers/anysearch", () => ({
   anysearch: { id: "anysearch", search: () => state.anysearchImpl() },
+}));
+
+vi.mock("../../src/search/providers/firecrawl", () => ({
+  firecrawl: { id: "firecrawl", search: () => state.firecrawlImpl() },
 }));
 
 const env: Env = {};
@@ -20,6 +25,7 @@ const fast = { delayMs: 0 };
 describe("runSearch", () => {
   beforeEach(() => {
     state.anysearchImpl = async () => ({ body: { code: 0, data: { results: [{ title: "hit" }] } } });
+    state.firecrawlImpl = async () => ({ body: { success: true, data: { web: [] } } });
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -35,10 +41,22 @@ describe("runSearch", () => {
     expect(outcome.body).toEqual({ code: 0, data: { results: [{ title: "hit" }] } });
   });
 
+  it("falls back to firecrawl when anysearch fails", async () => {
+    state.anysearchImpl = async () => {
+      throw new RetryableError("anysearch down");
+    };
+    const outcome = await runSearch({ query: "q" }, env, fast);
+    expect(outcome.kind).toBe("ok");
+    expect(outcome.providerOk).toBe("firecrawl");
+  });
+
   it("retries a retryable failure 3 times before giving up on the provider", async () => {
     let calls = 0;
     state.anysearchImpl = async () => {
       calls++;
+      throw new RetryableError("down");
+    };
+    state.firecrawlImpl = async () => {
       throw new RetryableError("down");
     };
     const outcome = await runSearch({ query: "q" }, env, fast);
@@ -52,6 +70,9 @@ describe("runSearch", () => {
       calls++;
       throw new NonRetryableError("bad request");
     };
+    state.firecrawlImpl = async () => {
+      throw new NonRetryableError("bad request");
+    };
     const outcome = await runSearch({ query: "q" }, env, fast);
     expect(outcome.kind).toBe("all-failed");
     expect(calls).toBe(1);
@@ -61,10 +82,16 @@ describe("runSearch", () => {
     state.anysearchImpl = async () => {
       throw new RetryableError("anysearch dead");
     };
+    state.firecrawlImpl = async () => {
+      throw new RetryableError("firecrawl dead");
+    };
     const outcome = await runSearch({ query: "q" }, env, fast);
     expect(outcome.kind).toBe("all-failed");
     expect(outcome.status).toBe(502);
-    expect(outcome.errors).toEqual([{ provider: "anysearch", message: "anysearch dead" }]);
+    expect(outcome.errors).toEqual([
+      { provider: "anysearch", message: "anysearch dead" },
+      { provider: "firecrawl", message: "firecrawl dead" },
+    ]);
   });
 
   it("logs each attempt with search feature tag", async () => {

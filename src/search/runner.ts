@@ -5,10 +5,11 @@ import { logAttempt } from "../log";
 import { withRetry, type RetryOptions } from "../retry";
 import type { RequestRecorder } from "../telemetry";
 import { anysearch } from "./providers/anysearch";
+import { firecrawl } from "./providers/firecrawl";
 import type { SearchProvider, SearchRequest } from "./types";
 
-/** 供应商降级顺序，写死：anysearch。当前仅一家，链结构预留后续扩展。 */
-export const SEARCH_CHAIN: readonly SearchProvider[] = [anysearch];
+/** 供应商降级顺序，写死：anysearch → firecrawl。数组顺序即降级顺序。 */
+export const SEARCH_CHAIN: readonly SearchProvider[] = [anysearch, firecrawl];
 
 export const SEARCH_PROVIDER_IDS: readonly string[] = SEARCH_CHAIN.map((p) => p.id);
 
