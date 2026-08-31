@@ -1,8 +1,10 @@
 import type { D1Database, ExecutionContext } from "@cloudflare/workers-types";
+import type { ApiScope } from "./auth";
 import { logAttempt } from "./log";
 import type { AttemptInfo } from "./retry";
 
-export type Feature = "chat" | "read" | "search" | "embeddings" | "rerank" | "email";
+/** 遥测 feature 与 token 权限 scope 是同一份清单（加业务端点时同步扩 API_SCOPES）。 */
+export type Feature = ApiScope;
 
 export interface RecorderMeta {
   requestId: string;

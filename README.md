@@ -12,9 +12,17 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 | POST | `/v1/embeddings` | OpenAI 兼容 embeddings。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-m3` → siliconflow；`jina-embeddings-v5-omni-small` → jina（多模态，`task`/`normalized` 透传）。 |
 | POST | `/v1/rerank` | 文档重排序（Jina/Cohere 风格：`query` + `documents`，可选 `top_n`/`return_documents`）。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-reranker-v2-m3` → siliconflow。 |
 | POST | `/v1/send-email` | 发送纯文本/HTML 邮件（无附件，`to`/`cc`/`bcc` 跨组去重）。供应商链固定：exmail → sendgrid；每家单次尝试 + 安全降级（投递状态未知时中止防重复发信）。 |
-| GET | `/admin` | 管理后台（token 管理：新建/启停/删除，自动生成随机串）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`。 |
+| GET | `/admin` | 管理后台（token 管理：新建/启停/删除/改接口权限，自动生成随机串）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`。 |
 
 业务端点要求 `Authorization: Bearer <token>`；token 由管理员在 `/admin` 后台创建与停用（存 D1，无需重新部署）。
+
+### Token 接口权限（scopes）
+
+每个 token 可限制能调用的业务接口：`chat` / `read` / `search` / `embeddings` / `rerank` / `email`（与端点一一对应）。**scopes 为空 = 不限制**（可调用全部接口），存量 token 默认行为不变。token 无某接口权限时调用返回 403 `insufficient_scope`（同样记录监控）。
+
+- 后台：新建时勾选权限；列表「改权限」可随时调整（逗号分隔，留空 = 不限制）。
+- API：创建/编辑时传 `scopes` 数组，如 `{"prefix":"sk_","random":"...","scopes":["chat","search"]}`；`[]` 等同不限制；未知接口名返回 400 `invalid_scopes`。
+- `GET /admin/api/tokens` 返回 `scopes` 数组，空数组 = 不限制。
 
 ## 重试与降级策略
 

@@ -1,4 +1,4 @@
-import { authorize } from "./auth";
+import { authorize, scopeAllowed, type ApiScope } from "./auth";
 import { ADMIN_PAGE_HTML } from "./admin-page";
 import { handleAdminApi } from "./admin";
 import { CHAT_PROVIDER_IDS, getChatProviderById } from "./chat/chains";
@@ -42,9 +42,23 @@ interface GuardResult {
   tokenId: number | null;
 }
 
-async function guard(request: Request, env: WorkerEnv): Promise<GuardResult> {
+async function guard(request: Request, env: WorkerEnv, requiredScope: ApiScope): Promise<GuardResult> {
   const result = await authorize(request, env.DB);
-  if (result.ok) return { denied: null, tokenId: result.tokenId };
+  if (result.ok) {
+    if (!scopeAllowed(result.scopes, requiredScope)) {
+      return {
+        denied: json(403, {
+          error: {
+            message: `this token is not allowed to access the ${requiredScope} API`,
+            type: "invalid_request_error",
+            code: "insufficient_scope",
+          },
+        }),
+        tokenId: result.tokenId,
+      };
+    }
+    return { denied: null, tokenId: result.tokenId };
+  }
   if (result.reason === "db-error") {
     return {
       denied: json(500, {
@@ -62,8 +76,9 @@ interface HandlerResult {
 }
 
 /**
- * 每个业务端点的统一外壳：鉴权 → 建 recorder → 跑 handler → finish 落一行 requests。
- * 401 也落一行；500（D1 故障）不落。handler 内解析出 model 后改写 meta.model。
+ * 每个业务端点的统一外壳：鉴权（含 scope 校验）→ 建 recorder → 跑 handler → finish 落一行 requests。
+ * 401/403 也落一行（401 无 token_id，403 token 有效但无此接口权限）；500（D1 故障）不落。
+ * handler 内解析出 model 后改写 meta.model。
  */
 async function withRecording(
   request: Request,
@@ -74,9 +89,20 @@ async function withRecording(
   run: (recorder: RequestRecorder, meta: RecorderMeta) => Promise<HandlerResult>,
 ): Promise<Response> {
   const start = Date.now();
-  const auth = await guard(request, env);
+  const auth = await guard(request, env, feature);
   if (auth.denied !== null) {
-    if (auth.denied.status === 401) recordUnauthorized(ctx, env.DB, pathname);
+    if (auth.denied.status === 401) {
+      recordUnauthorized(ctx, env.DB, pathname);
+    } else if (auth.tokenId !== null) {
+      const recorder = new RequestRecorder(ctx, env.DB, {
+        requestId: crypto.randomUUID(),
+        feature,
+        endpoint: pathname,
+        model: "",
+        tokenId: auth.tokenId,
+      });
+      recorder.finish({ status: auth.denied.status, elapsedMs: Date.now() - start });
+    }
     return auth.denied;
   }
   const meta: RecorderMeta = {

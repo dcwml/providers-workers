@@ -26,15 +26,15 @@ npx wrangler d1 execute providers_db --remote --command "SELECT ..."   # 查监�
 
 ```
 src/
-  index.ts        # 入口：路由（业务 + /admin）+ 鉴权（D1 tokens 表）+ 错误矩阵（401/400/404/500/502）+ 请求级监控
-  auth.ts         # 业务鉴权（token SHA-256 哈希查 D1 tokens 表）+ constantTimeEquals（admin.ts 校验 ADMIN_TOKEN 复用）
+  index.ts        # 入口：路由（业务 + /admin）+ 鉴权（D1 tokens 表）+ 错误矩阵（401/403/400/404/500/502）+ 请求级监控
+  auth.ts         # 业务鉴权（token SHA-256 哈希查 D1 tokens 表，带出 scopes 接口权限）+ API_SCOPES/parseScopes/normalizeScopes + constantTimeEquals（admin.ts 校验 ADMIN_TOKEN 复用）
   config.ts       # UPSTREAM_TIMEOUT_MS=30s、DEFAULT_RETRY={3次,1s}
   env.ts          # Env 类型（ADMIN_TOKEN 可选，供应商 key 可选）+ WorkerEnv（含 DB: D1Database binding）
   errors.ts       # RetryableError/NonRetryableError/classifyHttpStatus/classifyNetworkError
   retry.ts        # withRetry：仅重试 RetryableError
   log.ts          # logAttempt：结构化尝试日志
   telemetry.ts    # RequestRecorder：requests/provider_attempts 落库（waitUntil 异步，失败仅 warn）
-  admin.ts        # /admin/api/* token 管理 API（Bearer ADMIN_TOKEN）
+  admin.ts        # /admin/api/* token 管理 API（Bearer ADMIN_TOKEN），创建/编辑支持 scopes（空=不限制）
   admin-page.ts   # /admin 静态管理页（无数据登录壳）
 migrations/       # D1 schema 迁移（wrangler d1 migrations）
   chat/           # types / sanitize（能力裁剪）/ chains（model→链）/ runner / providers/

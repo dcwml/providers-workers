@@ -144,6 +144,62 @@ describe("auth", () => {
   });
 });
 
+describe("token scopes", () => {
+  const chatBody = { model: "sample-chat", messages: [{ role: "user", content: "hi" }] };
+
+  it("allows a scoped token to call its granted API", async () => {
+    const scoped = makeEnv([{ id: 9, scopes: "chat,search" }]);
+    const res = await handler.fetch(
+      post("/v1/chat/completions", chatBody),
+      scoped,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects a scoped token on a non-granted API with 403 insufficient_scope (auth precedes body validation)", async () => {
+    const scoped = makeEnv([{ id: 9, scopes: "chat" }]);
+    const res = await handler.fetch(
+      post("/v1/search", { query: "hello" }),
+      scoped,
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: {
+        message: "this token is not allowed to access the search API",
+        type: "invalid_request_error",
+        code: "insufficient_scope",
+      },
+    });
+  });
+
+  it("still allows unrestricted tokens (empty scopes) on every API", async () => {
+    const unrestricted = makeEnv([{ id: 9, scopes: "" }]);
+    const read = await handler.fetch(post("/v1/read", { url: "https://example.com" }), unrestricted, makeFakeCtx().ctx);
+    const email = await handler.fetch(
+      post("/v1/send-email", { subject: "s", text: "b", to: "a@example.com" }),
+      unrestricted,
+      makeFakeCtx().ctx,
+    );
+    expect(read.status).toBe(200);
+    expect(email.status).toBe(200);
+  });
+
+  it("records a 403 requests row with the token id for scope-denied calls", async () => {
+    const d1 = makeFakeD1();
+    d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 9, scopes: "chat" }]);
+    const c = makeFakeCtx();
+    const scoped: WorkerEnv = { DB: d1.db } as WorkerEnv;
+    const res = await handler.fetch(post("/v1/search", { query: "hello" }), scoped, c.ctx);
+    expect(res.status).toBe(403);
+    await Promise.all(c.promises);
+    const row = d1.statements.find((s) => s.sql === INSERT_REQUEST_SQL);
+    expect(row?.params[4]).toBe(9);
+    expect(row?.params[5]).toBe(403);
+  });
+});
+
 describe("routing", () => {
   it("returns 404 for unknown path", async () => {
     const res = await handler.fetch(post("/nope", {}), env, makeFakeCtx().ctx);

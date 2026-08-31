@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { handleAdminApi, tokenMask, DELETE_SQL, INSERT_SQL, LIST_SQL, UPDATE_SQL } from "../src/admin";
+import {
+  handleAdminApi,
+  tokenMask,
+  DELETE_SQL,
+  INSERT_SQL,
+  LIST_SQL,
+  UPDATE_SCOPES_SQL,
+  UPDATE_SQL,
+} from "../src/admin";
 import { sha256Hex } from "../src/auth";
 import type { WorkerEnv } from "../src/env";
 import { makeFakeD1 } from "./helpers";
@@ -49,15 +57,33 @@ describe("GET /admin/api/tokens", () => {
   it("lists tokens without ever exposing hash or full token", async () => {
     const fake = makeFakeD1();
     fake.setRows(LIST_SQL, [
-      { id: 1, label: "a", token_mask: "sk_abcd...wxyz", enabled: 1, created_at: "2026-08-19T00:00:00.000Z" },
+      {
+        id: 1,
+        label: "a",
+        token_mask: "sk_abcd...wxyz",
+        enabled: 1,
+        created_at: "2026-08-19T00:00:00.000Z",
+        scopes: "chat,search",
+      },
     ]);
     const res = await handleAdminApi(req("GET", "/admin/api/tokens"), makeEnv(fake));
     expect(res.status).toBe(200);
-    const data = (await res.json()) as { tokens: unknown[] };
+    const data = (await res.json()) as { tokens: { scopes: string[] }[] };
     expect(data.tokens).toHaveLength(1);
+    expect(data.tokens[0]?.scopes).toEqual(["chat", "search"]);
     const body = JSON.stringify(data);
     expect(body).not.toContain("token_hash");
     expect(body).not.toContain("abcd1234wxyz");
+  });
+
+  it("returns an empty scopes array for unrestricted tokens", async () => {
+    const fake = makeFakeD1();
+    fake.setRows(LIST_SQL, [
+      { id: 1, label: "", token_mask: "abcd...wxyz", enabled: 1, created_at: "t", scopes: null },
+    ]);
+    const res = await handleAdminApi(req("GET", "/admin/api/tokens"), makeEnv(fake));
+    const data = (await res.json()) as { tokens: { scopes: string[] }[] };
+    expect(data.tokens[0]?.scopes).toEqual([]);
   });
 
   it("maps D1 failures on LIST to 500 db_error", async () => {
@@ -79,15 +105,75 @@ describe("POST /admin/api/tokens", () => {
       makeEnv(fake),
     );
     expect(res.status).toBe(201);
-    const data = (await res.json()) as { id: number; token: string; token_mask: string };
-    expect(data).toEqual({ id: 1, token: "sk_abcd1234wxyz", token_mask: "sk_abcd...wxyz" });
+    const data = (await res.json()) as { id: number; token: string; token_mask: string; scopes: string[] };
+    expect(data).toEqual({ id: 1, token: "sk_abcd1234wxyz", token_mask: "sk_abcd...wxyz", scopes: [] });
     expect(fake.statements).toHaveLength(1);
     expect(fake.statements[0]?.params).toEqual([
       await sha256Hex("sk_abcd1234wxyz"),
       "sk_",
       "sk_abcd...wxyz",
       "test",
+      "",
     ]);
+  });
+
+  it("stores normalized scopes when provided and echoes them back", async () => {
+    const fake = makeFakeD1();
+    const res = await handleAdminApi(
+      req("POST", "/admin/api/tokens", {
+        prefix: "sk_",
+        random: "abcd1234wxyz",
+        scopes: ["Chat", "search", "chat"],
+      }),
+      makeEnv(fake),
+    );
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as { scopes: string[] };
+    expect(data.scopes).toEqual(["chat", "search"]);
+    expect(fake.statements[0]?.params).toEqual([
+      await sha256Hex("sk_abcd1234wxyz"),
+      "sk_",
+      "sk_abcd...wxyz",
+      "",
+      "chat,search",
+    ]);
+  });
+
+  it("stores empty string for scopes: [] (unrestricted)", async () => {
+    const fake = makeFakeD1();
+    const res = await handleAdminApi(
+      req("POST", "/admin/api/tokens", { prefix: "sk_", random: "abcd1234wxyz", scopes: [] }),
+      makeEnv(fake),
+    );
+    expect(res.status).toBe(201);
+    expect(fake.statements[0]?.params[4]).toBe("");
+  });
+
+  it("rejects unknown scope names with 400 invalid_scopes", async () => {
+    const fake = makeFakeD1();
+    const res = await handleAdminApi(
+      req("POST", "/admin/api/tokens", { prefix: "sk_", random: "abcd1234wxyz", scopes: ["bogus"] }),
+      makeEnv(fake),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: {
+        message: "unknown scope: bogus; valid scopes: chat, read, search, embeddings, rerank, email",
+        code: "invalid_scopes",
+      },
+    });
+    expect(fake.statements).toHaveLength(0);
+  });
+
+  it("rejects non-array scopes with 400 invalid_scopes", async () => {
+    const res = await handleAdminApi(
+      req("POST", "/admin/api/tokens", { prefix: "sk_", random: "abcd1234wxyz", scopes: "chat" }),
+      makeEnv(),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: { message: "scopes must be an array of scope names", code: "invalid_scopes" },
+    });
   });
 
   it("rejects random shorter than 8 chars with 400", async () => {
@@ -140,6 +226,46 @@ describe("PATCH /admin/api/tokens/:id", () => {
     expect(res.status).toBe(200);
     expect(fake.statements[0]?.sql).toBe(UPDATE_SQL);
     expect(fake.statements[0]?.params).toEqual([0, 5]);
+  });
+
+  it("updates scopes when provided", async () => {
+    const fake = makeFakeD1();
+    const res = await handleAdminApi(req("PATCH", "/admin/api/tokens/5", { scopes: ["email"] }), makeEnv(fake));
+    expect(res.status).toBe(200);
+    expect(fake.statements[0]?.sql).toBe(UPDATE_SCOPES_SQL);
+    expect(fake.statements[0]?.params).toEqual(["email", 5]);
+  });
+
+  it("updates both enabled and scopes in one call", async () => {
+    const fake = makeFakeD1();
+    const res = await handleAdminApi(
+      req("PATCH", "/admin/api/tokens/5", { enabled: true, scopes: ["chat", "search"] }),
+      makeEnv(fake),
+    );
+    expect(res.status).toBe(200);
+    expect(fake.statements.map((s) => s.sql)).toEqual([UPDATE_SQL, UPDATE_SCOPES_SQL]);
+  });
+
+  it("resets to unrestricted with scopes: []", async () => {
+    const fake = makeFakeD1();
+    const res = await handleAdminApi(req("PATCH", "/admin/api/tokens/5", { scopes: [] }), makeEnv(fake));
+    expect(res.status).toBe(200);
+    expect(fake.statements[0]?.params).toEqual(["", 5]);
+  });
+
+  it("rejects unknown scopes with 400", async () => {
+    const fake = makeFakeD1();
+    const res = await handleAdminApi(req("PATCH", "/admin/api/tokens/5", { scopes: ["nope"] }), makeEnv(fake));
+    expect(res.status).toBe(400);
+    expect(fake.statements).toHaveLength(0);
+  });
+
+  it("rejects an empty patch body with 400", async () => {
+    const res = await handleAdminApi(req("PATCH", "/admin/api/tokens/5", {}), makeEnv());
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: { message: "enabled or scopes is required", code: "invalid_patch" },
+    });
   });
 
   it("rejects non-boolean enabled with 400", async () => {

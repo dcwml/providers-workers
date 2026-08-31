@@ -29,11 +29,13 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
 </div>
 <div id="main" hidden>
   <h3>Token 列表</h3>
-  <table id="tokens"><thead><tr><th>ID</th><th>名称</th><th>掩码</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead><tbody></tbody></table>
+  <table id="tokens"><thead><tr><th>ID</th><th>名称</th><th>掩码</th><th>权限</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead><tbody></tbody></table>
   <h3>新建 Token</h3>
   <p>前缀：<input id="prefix" placeholder="如 sk_ 或 infility_agent_（可留空）" style="width: 280px"></p>
   <p>随机串：<input id="random" style="width: 380px"> <button id="btn-gen">生成</button></p>
   <p>名称：<input id="label" placeholder="用途备注" style="width: 280px"></p>
+  <p>权限：<span id="scope-boxes"></span></p>
+  <p class="muted">全部不勾 = 不限制（可调用所有接口）。chat=对话，read=页面读取，search=搜索，embeddings=向量，rerank=重排，email=邮件。</p>
   <button id="btn-create">创建</button>
   <p class="muted">完整 token 仅创建后展示一次，请立即复制保存。随机串可手改（至少 8 位）；复用旧 token 时前缀留空、随机串贴完整旧值。</p>
   <div id="token-result" hidden></div>
@@ -57,14 +59,33 @@ function api(path, options) {
     return res;
   });
 }
+var SCOPES = ["chat", "read", "search", "embeddings", "rerank", "email"];
+function renderScopeBoxes() {
+  var box = document.getElementById("scope-boxes");
+  box.innerHTML = "";
+  SCOPES.forEach(function (s) {
+    var label = document.createElement("label");
+    label.style.marginRight = "10px";
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "new-scope";
+    cb.value = s;
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(" " + s));
+    box.appendChild(label);
+  });
+}
 function render(data) {
   var tb = document.querySelector("#tokens tbody");
   tb.innerHTML = "";
   (data.tokens || []).forEach(function (t) {
+    var scopes = Array.isArray(t.scopes) && t.scopes.length ? t.scopes.join(", ") : "全部";
     var tr = document.createElement("tr");
     tr.innerHTML = "<td>" + t.id + "</td><td>" + esc(t.label) + "</td><td><code>" + esc(t.token_mask) + "</code></td>" +
+      "<td>" + esc(scopes) + "</td>" +
       "<td>" + (t.enabled ? "启用" : "禁用") + "</td><td>" + esc(t.created_at) + "</td>" +
       "<td><button data-act='toggle' data-id='" + t.id + "' data-next='" + (t.enabled ? 0 : 1) + "'>" + (t.enabled ? "禁用" : "启用") + "</button>" +
+      "<button data-act='scopes' data-id='" + t.id + "' data-scopes='" + esc((t.scopes || []).join(",")) + "'>改权限</button>" +
       "<button data-act='del' data-id='" + t.id + "'>删除</button></td>";
     tb.appendChild(tr);
   });
@@ -97,6 +118,10 @@ document.getElementById("btn-create").addEventListener("click", function () {
     random: document.getElementById("random").value,
     label: document.getElementById("label").value,
   };
+  var checked = Array.prototype.slice.call(document.querySelectorAll("#scope-boxes input:checked")).map(function (cb) {
+    return cb.value;
+  });
+  if (checked.length) body.scopes = checked;
   api("/admin/api/tokens", { method: "POST", body: JSON.stringify(body) }).then(function (res) {
     return res.json().then(function (data) {
       if (!res.ok) { alert((data.error && data.error.message) || "创建失败"); return; }
@@ -115,11 +140,19 @@ document.getElementById("tokens").addEventListener("click", function (ev) {
     var next = btn.getAttribute("data-next") === "1";
     api("/admin/api/tokens/" + id, { method: "PATCH", body: JSON.stringify({ enabled: next }) })
       .then(load).catch(function () {});
+  } else if (btn.getAttribute("data-act") === "scopes") {
+    var hint = "允许调用的接口，逗号分隔（" + SCOPES.join("/") + "）；留空 = 不限制（全部允许）：";
+    var input = prompt(hint, btn.getAttribute("data-scopes"));
+    if (input === null) return;
+    var scopes = input.split(/[,，]/).map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+    api("/admin/api/tokens/" + id, { method: "PATCH", body: JSON.stringify({ scopes: scopes }) })
+      .then(load).catch(function () {});
   } else if (btn.getAttribute("data-act") === "del") {
     if (!confirm("确认删除该 token？")) return;
     api("/admin/api/tokens/" + id, { method: "DELETE" }).then(load).catch(function () {});
   }
 });
+renderScopeBoxes();
 load();
 </script>
 </body>
