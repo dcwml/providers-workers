@@ -1,7 +1,8 @@
+import type { ApiScope } from "./auth";
 import type { AttemptInfo } from "./retry";
 
 export function logAttempt(
-  feature: "chat" | "read" | "search" | "embeddings" | "rerank" | "email",
+  feature: ApiScope,
   provider: string,
   info: AttemptInfo,
 ): void {

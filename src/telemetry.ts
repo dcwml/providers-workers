@@ -27,6 +27,7 @@ export function featureFromEndpoint(endpoint: string): Feature {
   if (endpoint.startsWith("/v1/rerank")) return "rerank";
   if (endpoint.startsWith("/v1/send-email")) return "email";
   if (endpoint.startsWith("/v1/search")) return "search";
+  if (endpoint.startsWith("/v1/weather")) return "weather";
   return "read";
 }
 

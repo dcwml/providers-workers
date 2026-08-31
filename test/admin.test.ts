@@ -158,7 +158,7 @@ describe("POST /admin/api/tokens", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       error: {
-        message: "unknown scope: bogus; valid scopes: chat, read, search, embeddings, rerank, email",
+        message: "unknown scope: bogus; valid scopes: chat, read, search, embeddings, rerank, email, weather",
         code: "invalid_scopes",
       },
     });

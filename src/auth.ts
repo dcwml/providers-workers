@@ -1,7 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 
 /** 业务接口权限（scope）全集，与遥测 Feature 一一对应；scopes 存库为逗号分隔字符串。 */
-export const API_SCOPES = ["chat", "read", "search", "embeddings", "rerank", "email"] as const;
+export const API_SCOPES = ["chat", "read", "search", "embeddings", "rerank", "email", "weather"] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
 export type AuthResult =

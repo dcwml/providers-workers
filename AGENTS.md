@@ -1,6 +1,6 @@
 # AGENTS.md - Providers 项目工作手册
 
-多供应商聚合网关：Cloudflare Workers 上的 OpenAI 兼容 chat 接口 + embeddings 接口 + rerank 接口 + 页面读取接口，内置重试与供应商自动降级。本文件是修改本项目代码时必须遵守的约定。
+多供应商聚合网关：Cloudflare Workers 上的 OpenAI 兼容 chat 接口 + embeddings 接口 + rerank 接口 + 页面读取接口 + 搜索接口 + 邮件发送接口 + 天气查询接口，内置重试与供应商自动降级。本文件是修改本项目代码时必须遵守的约定。
 
 ## 常用命令
 
@@ -43,13 +43,14 @@ migrations/       # D1 schema 迁移（wrangler d1 migrations）
   read/           # types / runner（固定链）/ providers/（jina、tavily、firecrawl）
   search/         # types / runner（固定链）/ providers/（anysearch）
   email/          # types / address（地址解析+去重）/ runner（链）/ smtp-client（SMTP 协议库）/ providers/（exmail、sendgrid）
+  weather/        # types / coords（地图链接解析 + BD-09MC/BD-09/GCJ-02→WGS-84 坐标换算）/ runner（位置解析→预报）/ providers/（open-meteo）
 ```
 
 ## 核心约定
 
 ### 供应商实现
 
-- **每家供应商一个自包含文件**（`src/chat/providers/*.ts`、`src/read/providers/*.ts`、`src/embeddings/providers/*.ts`、`src/rerank/providers/*.ts`）：写死 BASE_URL、上游 model、ENV_KEY，自带失败分类逻辑。这是明确的架构选择，**不要抽公共适配器、不要消除供应商间的重复**。
+- **每家供应商一个自包含文件**（`src/chat/providers/*.ts`、`src/read/providers/*.ts`、`src/embeddings/providers/*.ts`、`src/rerank/providers/*.ts`、`src/weather/providers/*.ts`）：写死 BASE_URL、上游 model、ENV_KEY，自带失败分类逻辑。这是明确的架构选择，**不要抽公共适配器、不要消除供应商间的重复**。
 - chat 供应商发送请求前：先 `sanitizeRequest` 按 capabilities 裁剪（不支持的参数直接删；`json_schema` 不支持时降级 `json_object`；system 消息并入首条 user 消息），再把 `body.model` 改写为自家上游 model。
 - embeddings 供应商发送请求前：按 OpenAI embeddings 标准字段白名单（input/encoding_format/dimensions/user）裁剪，`body.model` 改写为自家上游固定 model；响应 `data` 为空数组按 `NonRetryableError` 处理。
 - rerank 供应商发送请求前：按 rerank 标准字段白名单（query/documents/top_n/return_documents）裁剪，`body.model` 改写为自家上游固定 model；响应 `results` 为空数组按 `NonRetryableError` 处理。
@@ -64,11 +65,12 @@ migrations/       # D1 schema 迁移（wrangler d1 migrations）
 - embeddings：`src/embeddings/models.ts` 按逻辑 model 写死**单个** provider——无链、无降级，失败即失败；未注册的 model 直接 400（`model_not_found`），不设回落。
 - rerank：`src/rerank/models.ts` 同 embeddings——按逻辑 model 写死单个 provider，无链、无降级；未注册的 model 直接 400（`model_not_found`）。
 - email：`src/email/runner.ts` 的 `EMAIL_CHAIN` 固定 exmail → sendgrid。**单次尝试 + 安全降级**：每家恰好一次（`withRetry` 传 `maxAttempts:1`，仅取遥测接线），「确定没发出」的失败换下家；`DeliveryUncertainError`（投递状态未知：SMTP DATA 354 后超时/断连、SendGrid fetch 抛错）立即中止不降级，返回 502 `delivery_uncertain`——邮件不幂等，防重复发信，勿「统一」成 DEFAULT_RETRY。收件人解析与 to>cc>bcc 去重在 `src/email/address.ts`；from 内置于各 provider 文件；`smtp-client.ts` 是协议传输库（依赖注入 connect 便于 mock），不算供应商适配层。
+- weather：`src/weather/runner.ts` 单 provider（open-meteo，**免 key**，勿加 ENV_KEY）。位置解析四选一：`latitude`/`longitude` 直传 > 地图分享链接（`src/weather/coords.ts` 解析百度 `@x,y,z`（BD-09MC）、百度 marker `?location=`（BD-09）、高德 marker `?position=`（GCJ-02），统一换算 WGS-84）> 地名 geocode（GeoNames，count=1，命中多个取第一个）> 调用方 IP 兜底（`request.cf` 城市级坐标）。地理编码与预报**两阶段各自独立** withRetry；地名查无结果 404 `location_not_found`（非上游失败，不重试不降级）；预报响应原样透传，入口层包 `{location, weather}` 信封。遥测 provider id：地理编码阶段 `open-meteo-geocode`、预报阶段 `open-meteo`。
 
 ### 错误与重试
 
 - 单家：最多 3 次请求（重试 2 次），间隔 1s（`DEFAULT_RETRY`）；runner 层逐家串行，第一家成功即返回，全链失败 → 502 附各家 `ProviderError` 明细。
-- chat 错误体为 OpenAI 风格 `{error:{message,type,code,provider_errors?}}`；read 为简化形 `{error:{message,provider_errors?}}`；embeddings/rerank 同 chat 的 OpenAI 风格（单家失败 502，code=`provider_failed`）；email 同 chat 的 OpenAI 风格（全链失败 502，code=`all_providers_failed`；投递状态未知 502，code=`delivery_uncertain`）。勿混用。
+- chat 错误体为 OpenAI 风格 `{error:{message,type,code,provider_errors?}}`；read 为简化形 `{error:{message,provider_errors?}}`；embeddings/rerank 同 chat 的 OpenAI 风格（单家失败 502，code=`provider_failed`）；email 同 chat 的 OpenAI 风格（全链失败 502，code=`all_providers_failed`；投递状态未知 502，code=`delivery_uncertain`）；weather 同 chat 的 OpenAI 风格（上游失败 502，code=`provider_failed`；地名查不到 404，code=`location_not_found`；入参问题 400，code=`invalid_location`/`invalid_days`/`ambiguous_location`/`unparseable_map_link`/`location_required`）。勿混用。
 - 请求体防御：入口解析后访问属性前先做 `?? {}` 守卫（合法 JSON `null` 体会解析成功）。
 
 ## 密钥与环境变量

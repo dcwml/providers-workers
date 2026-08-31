@@ -18,7 +18,7 @@ npx wrangler d1 execute providers_db --local --command "<SQL>"
 
 ## 表速览
 
-- `requests`：每次网关调用一行。`feature`(chat/read/search/embeddings/rerank/email)、`endpoint`、`model`、`token_id`(关联 tokens，删除后为 NULL)、`status`(最终响应码；401 表示鉴权失败)、`provider_ok`(成功供应商；全失败/非业务失败为 NULL)、`elapsed_ms`。
+- `requests`：每次网关调用一行。`feature`(chat/read/search/embeddings/rerank/email/weather)、`endpoint`、`model`、`token_id`(关联 tokens，删除后为 NULL)、`status`(最终响应码；401 表示鉴权失败)、`provider_ok`(成功供应商；全失败/非业务失败为 NULL)、`elapsed_ms`。weather 无逻辑 model，`model` 列为空。
 - `provider_attempts`：每次上游尝试一行（含重试）。`provider`、`model`、`attempt`(第几次)、`result`(ok/retry/fatal)、`elapsed_ms`、`error`。
 - `tokens`：token 登记表。`token_mask` 用于人工比对；完整 token 与哈希不入查询结果。
 
@@ -153,6 +153,29 @@ WHERE feature = 'email'
   AND datetime(created_at) >= datetime('now', '-30 days')
 GROUP BY provider;
 ```
+
+**12. weather 调用量与地名解析占比（近 7 天）**
+
+weather 是两阶段上游：地名查询先走地理编码（provider id `open-meteo-geocode`），再走预报（`open-meteo`）；坐标/地图链接/IP 定位直接进预报。因此地理编码尝试数 ≈ 地名查询量。
+
+```sql
+SELECT date(created_at) AS day,
+       COUNT(*) AS calls,
+       SUM(status = 200) AS ok
+FROM requests
+WHERE feature = 'weather'
+  AND datetime(created_at) >= datetime('now', '-7 days')
+GROUP BY day
+ORDER BY day;
+
+SELECT provider, COUNT(*) AS attempts, SUM(result = 'ok') AS ok
+FROM provider_attempts
+WHERE feature = 'weather'
+  AND datetime(created_at) >= datetime('now', '-7 days')
+GROUP BY provider;
+```
+
+地名解析失败会以 404 `location_not_found` 落在 `requests`（无上游预报尝试），可用查询 5 的思路按 `feature = 'weather' AND status = 404` 单独统计。
 
 ## 容量提示
 

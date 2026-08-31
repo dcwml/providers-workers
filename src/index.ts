@@ -28,6 +28,7 @@ import type { RerankProvider, RerankRequest } from "./rerank/types";
 import { parseAddress, prepareRecipients } from "./email/address";
 import { EMAIL_PROVIDER_IDS, getEmailProviderById, runEmail } from "./email/runner";
 import type { EmailProvider, ParsedAddress, PreparedMail } from "./email/types";
+import { runWeather } from "./weather/runner";
 import { recordUnauthorized, RequestRecorder, type Feature, type RecorderMeta } from "./telemetry";
 
 function json(status: number, body: unknown): Response {
@@ -641,6 +642,139 @@ async function handleEmail(
   return { response: json(200, outcome.body), providerOk: outcome.providerOk };
 }
 
+async function handleWeather(
+  request: Request,
+  env: WorkerEnv,
+  recorder: RequestRecorder,
+  _meta: RecorderMeta,
+): Promise<HandlerResult> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return {
+      response: json(400, {
+        error: { message: "invalid JSON body", type: "invalid_request_error", code: "invalid_json" },
+      }),
+    };
+  }
+  const req = (body ?? {}) as { location?: unknown; latitude?: unknown; longitude?: unknown; days?: unknown };
+
+  let location: string | undefined;
+  if (req.location !== undefined) {
+    if (typeof req.location !== "string" || req.location.trim().length === 0) {
+      return {
+        response: json(400, {
+          error: {
+            message: "location must be a non-empty string (place name or map share link)",
+            type: "invalid_request_error",
+            code: "invalid_location",
+          },
+        }),
+      };
+    }
+    location = req.location;
+  }
+
+  let latitude: number | undefined;
+  let longitude: number | undefined;
+  if (req.latitude !== undefined || req.longitude !== undefined) {
+    if (
+      typeof req.latitude !== "number" ||
+      !Number.isFinite(req.latitude) ||
+      typeof req.longitude !== "number" ||
+      !Number.isFinite(req.longitude)
+    ) {
+      return {
+        response: json(400, {
+          error: {
+            message: "latitude and longitude must be provided together as finite numbers",
+            type: "invalid_request_error",
+            code: "invalid_location",
+          },
+        }),
+      };
+    }
+    if (req.latitude < -90 || req.latitude > 90 || req.longitude < -180 || req.longitude > 180) {
+      return {
+        response: json(400, {
+          error: {
+            message: "latitude must be within [-90, 90] and longitude within [-180, 180]",
+            type: "invalid_request_error",
+            code: "invalid_location",
+          },
+        }),
+      };
+    }
+    latitude = req.latitude;
+    longitude = req.longitude;
+  }
+
+  let days: number | undefined;
+  if (req.days !== undefined) {
+    if (typeof req.days !== "number" || !Number.isInteger(req.days) || req.days < 1 || req.days > 16) {
+      return {
+        response: json(400, {
+          error: {
+            message: "days must be an integer between 1 and 16",
+            type: "invalid_request_error",
+            code: "invalid_days",
+          },
+        }),
+      };
+    }
+    days = req.days;
+  }
+
+  // 无显式位置时用 request.cf 的城市级坐标兜底（Cloudflare 自带，字符串，可能缺失/非法）
+  const cf = (request as Request & { cf?: { latitude?: unknown; longitude?: unknown } }).cf;
+  let ipFallback: { latitude: number; longitude: number } | undefined;
+  if (
+    location === undefined &&
+    latitude === undefined &&
+    typeof cf?.latitude === "string" &&
+    typeof cf?.longitude === "string"
+  ) {
+    const cfLat = Number(cf.latitude);
+    const cfLng = Number(cf.longitude);
+    if (Number.isFinite(cfLat) && Number.isFinite(cfLng) && cfLat >= -90 && cfLat <= 90 && cfLng >= -180 && cfLng <= 180) {
+      ipFallback = { latitude: cfLat, longitude: cfLng };
+    }
+  }
+
+  const outcome = await runWeather({ location, latitude, longitude, days, ipFallback }, env, undefined, recorder);
+  if (outcome.kind === "ok") {
+    return {
+      response: json(200, { location: outcome.location, weather: outcome.body }),
+      providerOk: outcome.providerOk,
+    };
+  }
+  if (outcome.kind === "bad-request") {
+    return {
+      response: json(400, {
+        error: { message: outcome.message, type: "invalid_request_error", code: outcome.code },
+      }),
+    };
+  }
+  if (outcome.kind === "not-found") {
+    return {
+      response: json(404, {
+        error: { message: outcome.message, type: "invalid_request_error", code: outcome.code },
+      }),
+    };
+  }
+  return {
+    response: json(502, {
+      error: {
+        message: "weather provider failed",
+        type: "upstream_error",
+        code: "provider_failed",
+        provider_errors: outcome.errors,
+      },
+    }),
+  };
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -680,6 +814,11 @@ export default {
       if (url.pathname === "/v1/send-email") {
         return withRecording(request, env, ctx, url.pathname, "email", (recorder, meta) =>
           handleEmail(request, env, providerParam, recorder, meta),
+        );
+      }
+      if (url.pathname === "/v1/weather") {
+        return withRecording(request, env, ctx, url.pathname, "weather", (recorder, meta) =>
+          handleWeather(request, env, recorder, meta),
         );
       }
     }

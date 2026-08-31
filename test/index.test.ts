@@ -5,6 +5,7 @@ import type { EmbeddingsOutcome } from "../src/embeddings/runner";
 import type { ReadOutcome } from "../src/read/runner";
 import type { RerankOutcome } from "../src/rerank/runner";
 import type { SearchOutcome } from "../src/search/runner";
+import type { WeatherOutcome } from "../src/weather/runner";
 import { TOKEN_LOOKUP_SQL } from "../src/auth";
 import type { WorkerEnv } from "../src/env";
 import { INSERT_REQUEST_SQL } from "../src/telemetry";
@@ -24,6 +25,8 @@ const state = vi.hoisted(() => ({
   emailOutcome: undefined as unknown as EmailOutcome,
   emailOnly: undefined as unknown,
   emailMail: undefined as unknown,
+  weatherOutcome: undefined as unknown as WeatherOutcome,
+  weatherReq: undefined as unknown,
 }));
 
 vi.mock("../src/chat/runner", () => ({
@@ -71,6 +74,12 @@ vi.mock("../src/email/runner", () => ({
     id === "exmail" || id === "sendgrid" ? { id } : undefined,
   EMAIL_PROVIDER_IDS: ["exmail", "sendgrid"],
 }));
+vi.mock("../src/weather/runner", () => ({
+  runWeather: async (req: unknown) => {
+    state.weatherReq = req;
+    return state.weatherOutcome;
+  },
+}));
 
 import handler from "../src/index";
 
@@ -106,6 +115,14 @@ beforeEach(() => {
   state.emailOutcome = { kind: "ok", status: 200, body: { accepted: true, provider: "exmail" }, providerOk: "exmail" };
   state.emailOnly = undefined;
   state.emailMail = undefined;
+  state.weatherOutcome = {
+    kind: "ok",
+    status: 200,
+    location: { latitude: 23.129, longitude: 113.264, source: "geocode", name: "广州" },
+    body: { current: { temperature_2m: 30.2 } },
+    providerOk: "open-meteo",
+  };
+  state.weatherReq = undefined;
 });
 
 describe("auth", () => {
@@ -378,6 +395,174 @@ describe("search endpoint", () => {
     const body = (await res.json()) as { error: { message: string; provider_errors: unknown[] } };
     expect(body.error.message).toBe("all providers failed");
     expect(body.error.provider_errors).toEqual([{ provider: "anysearch", message: "dead" }]);
+  });
+});
+
+describe("weather endpoint", () => {
+  it("returns the {location, weather} envelope on success", async () => {
+    const res = await handler.fetch(post("/v1/weather", { location: "广州" }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(await res.json()).toEqual({
+      location: { latitude: 23.129, longitude: 113.264, source: "geocode", name: "广州" },
+      weather: { current: { temperature_2m: 30.2 } },
+    });
+  });
+
+  it("rejects invalid JSON with 400", async () => {
+    const req = new Request("https://gw.example/v1/weather", {
+      method: "POST",
+      headers: { authorization: "Bearer sekret", "content-type": "application/json" },
+      body: "{not json",
+    });
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_json");
+  });
+
+  it("rejects non-string or blank location with 400 invalid_location", async () => {
+    const res = await handler.fetch(post("/v1/weather", { location: 42 }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_location");
+    const res2 = await handler.fetch(post("/v1/weather", { location: "   " }), env, makeFakeCtx().ctx);
+    expect(res2.status).toBe(400);
+  });
+
+  it("rejects partial or out-of-range coordinates with 400 invalid_location", async () => {
+    const res = await handler.fetch(post("/v1/weather", { latitude: 23.1 }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+    const res2 = await handler.fetch(
+      post("/v1/weather", { latitude: 999, longitude: 113 }),
+      env,
+      makeFakeCtx().ctx,
+    );
+    expect(res2.status).toBe(400);
+  });
+
+  it("rejects invalid days with 400 invalid_days", async () => {
+    for (const days of [0, 17, 1.5]) {
+      const res = await handler.fetch(
+        post("/v1/weather", { location: "广州", days }),
+        env,
+        makeFakeCtx().ctx,
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("invalid_days");
+    }
+  });
+
+  it("passes a legal JSON null body through the ?? {} guard to the runner", async () => {
+    const res = await handler.fetch(post("/v1/weather", null), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(200);
+    expect(state.weatherReq).toEqual({
+      location: undefined,
+      latitude: undefined,
+      longitude: undefined,
+      days: undefined,
+      ipFallback: undefined,
+    });
+  });
+
+  it("extracts request.cf coordinates as the ip fallback", async () => {
+    const req = post("/v1/weather", {});
+    Object.defineProperty(req, "cf", {
+      value: { latitude: "23.1", longitude: "113.2" },
+    });
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
+    expect(res.status).toBe(200);
+    expect((state.weatherReq as { ipFallback?: unknown }).ipFallback).toEqual({
+      latitude: 23.1,
+      longitude: 113.2,
+    });
+  });
+
+  it("ignores malformed request.cf values", async () => {
+    const req = post("/v1/weather", {});
+    Object.defineProperty(req, "cf", {
+      value: { latitude: "not-a-number", longitude: "113.2" },
+    });
+    const res = await handler.fetch(req, env, makeFakeCtx().ctx);
+    expect(res.status).toBe(200);
+    expect((state.weatherReq as { ipFallback?: unknown }).ipFallback).toBeUndefined();
+  });
+
+  it("maps runner bad-request outcomes to 400 with their code", async () => {
+    state.weatherOutcome = {
+      kind: "bad-request",
+      status: 400,
+      code: "location_required",
+      message: "provide location or latitude/longitude",
+    };
+    const res = await handler.fetch(post("/v1/weather", {}), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: {
+        message: "provide location or latitude/longitude",
+        type: "invalid_request_error",
+        code: "location_required",
+      },
+    });
+  });
+
+  it("maps runner not-found outcomes to 404 location_not_found", async () => {
+    state.weatherOutcome = {
+      kind: "not-found",
+      status: 404,
+      code: "location_not_found",
+      message: 'geocoding found no place named "xyz"',
+    };
+    const res = await handler.fetch(post("/v1/weather", { location: "xyz" }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("location_not_found");
+  });
+
+  it("maps runner failed outcomes to 502 with provider_errors", async () => {
+    state.weatherOutcome = {
+      kind: "failed",
+      status: 502,
+      errors: [{ provider: "open-meteo", message: "dead" }],
+    };
+    const res = await handler.fetch(post("/v1/weather", { location: "广州" }), env, makeFakeCtx().ctx);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: { message: string; provider_errors: unknown[] } };
+    expect(body.error.message).toBe("weather provider failed");
+    expect(body.error.provider_errors).toEqual([{ provider: "open-meteo", message: "dead" }]);
+  });
+
+  it("rejects a token without the weather scope with 403", async () => {
+    const scoped = makeEnv([{ id: 9, scopes: "chat" }]);
+    const res = await handler.fetch(post("/v1/weather", { location: "广州" }), scoped, makeFakeCtx().ctx);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: {
+        message: "this token is not allowed to access the weather API",
+        type: "invalid_request_error",
+        code: "insufficient_scope",
+      },
+    });
+  });
+
+  it("allows a token scoped to weather only", async () => {
+    const scoped = makeEnv([{ id: 9, scopes: "weather" }]);
+    const res = await handler.fetch(post("/v1/weather", { location: "广州" }), scoped, makeFakeCtx().ctx);
+    expect(res.status).toBe(200);
+  });
+
+  it("records a requests row with feature=weather and provider_ok", async () => {
+    const d1 = makeFakeD1();
+    d1.setRows(TOKEN_LOOKUP_SQL, [{ id: 7 }]);
+    const c = makeFakeCtx();
+    const envOk: WorkerEnv = { DB: d1.db } as WorkerEnv;
+    const res = await handler.fetch(post("/v1/weather", { location: "广州" }), envOk, c.ctx);
+    expect(res.status).toBe(200);
+    await Promise.all(c.promises);
+    const row = d1.statements.find((s) => s.sql === INSERT_REQUEST_SQL);
+    expect(row?.params[1]).toBe("weather");
+    expect(row?.params[6]).toBe("open-meteo");
   });
 });
 

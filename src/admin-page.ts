@@ -35,7 +35,7 @@ export const ADMIN_PAGE_HTML = `<!doctype html>
   <p>随机串：<input id="random" style="width: 380px"> <button id="btn-gen">生成</button></p>
   <p>名称：<input id="label" placeholder="用途备注" style="width: 280px"></p>
   <p>权限：<span id="scope-boxes"></span></p>
-  <p class="muted">全部不勾 = 不限制（可调用所有接口）。chat=对话，read=页面读取，search=搜索，embeddings=向量，rerank=重排，email=邮件。</p>
+  <p class="muted">全部不勾 = 不限制（可调用所有接口）。chat=对话，read=页面读取，search=搜索，embeddings=向量，rerank=重排，email=邮件，weather=天气。</p>
   <button id="btn-create">创建</button>
   <p class="muted">完整 token 仅创建后展示一次，请立即复制保存。随机串可手改（至少 8 位）；复用旧 token 时前缀留空、随机串贴完整旧值。</p>
   <div id="token-result" hidden></div>
@@ -59,7 +59,7 @@ function api(path, options) {
     return res;
   });
 }
-var SCOPES = ["chat", "read", "search", "embeddings", "rerank", "email"];
+var SCOPES = ["chat", "read", "search", "embeddings", "rerank", "email", "weather"];
 function renderScopeBoxes() {
   var box = document.getElementById("scope-boxes");
   box.innerHTML = "";

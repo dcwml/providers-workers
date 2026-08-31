@@ -1,6 +1,6 @@
 # Providers
 
-Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + embeddings 接口 + rerank 接口 + 页面读取接口 + 邮件发送接口，内置重试与供应商自动降级。
+Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + embeddings 接口 + rerank 接口 + 页面读取接口 + 邮件发送接口 + 天气查询接口，内置重试与供应商自动降级。
 
 ## 端点
 
@@ -12,13 +12,14 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 | POST | `/v1/embeddings` | OpenAI 兼容 embeddings。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-m3` → siliconflow；`jina-embeddings-v5-omni-small` → jina（多模态，`task`/`normalized` 透传）。 |
 | POST | `/v1/rerank` | 文档重排序（Jina/Cohere 风格：`query` + `documents`，可选 `top_n`/`return_documents`）。按 `model` 映射到单个 provider（无链、无降级），响应原样透传。当前：`BAAI/bge-reranker-v2-m3` → siliconflow。 |
 | POST | `/v1/send-email` | 发送纯文本/HTML 邮件（无附件，`to`/`cc`/`bcc` 跨组去重）。供应商链固定：exmail → sendgrid；每家单次尝试 + 安全降级（投递状态未知时中止防重复发信）。 |
+| POST | `/v1/weather` | 天气查询（实况 + 1-16 天日预报）。位置输入四选一：地名（`"广州"`）/ 地图分享链接（百度、高德，自动换算坐标系）/ `latitude`+`longitude` 直传 / 缺省按调用方 IP 定位。响应 `{location, weather}` 信封。供应商：open-meteo（免 key，地理编码与预报均走它）。 |
 | GET | `/admin` | 管理后台（token 管理：新建/启停/删除/改接口权限，自动生成随机串）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`。 |
 
 业务端点要求 `Authorization: Bearer <token>`；token 由管理员在 `/admin` 后台创建与停用（存 D1，无需重新部署）。
 
 ### Token 接口权限（scopes）
 
-每个 token 可限制能调用的业务接口：`chat` / `read` / `search` / `embeddings` / `rerank` / `email`（与端点一一对应）。**scopes 为空 = 不限制**（可调用全部接口），存量 token 默认行为不变。token 无某接口权限时调用返回 403 `insufficient_scope`（同样记录监控）。
+每个 token 可限制能调用的业务接口：`chat` / `read` / `search` / `embeddings` / `rerank` / `email` / `weather`（与端点一一对应）。**scopes 为空 = 不限制**（可调用全部接口），存量 token 默认行为不变。token 无某接口权限时调用返回 403 `insufficient_scope`（同样记录监控）。
 
 - 后台：新建时勾选权限；列表「改权限」可随时调整（逗号分隔，留空 = 不限制）。
 - API：创建/编辑时传 `scopes` 数组，如 `{"prefix":"sk_","random":"...","scopes":["chat","search"]}`；`[]` 等同不限制；未知接口名返回 400 `invalid_scopes`。
@@ -30,6 +31,7 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 - 网络错/超时/5xx/429 触发重试；其它 4xx 不重试但直接换下一家。
 - 全链失败返回 502，body 附各家错误明细。
 - embeddings/rerank 例外：单 provider 形式，无链、无降级，失败即返回 502（单家内部重试策略同上）。
+- weather 同为单 provider（open-meteo，免 key）：地理编码与预报两阶段各自独立重试；地名查不到返回 404（不重试不降级）。
 - email 例外：邮件不幂等——每家只发一次不重试；「确定没发出」的失败才降级，「不确定发没发出」（如 DATA 阶段后超时）中止并返回 502 `delivery_uncertain`。
 
 ## 本地开发
@@ -78,6 +80,12 @@ curl -s http://localhost:8787/v1/send-email \
   -H "Authorization: Bearer sk_local_localtest1234" \
   -H "Content-Type: application/json" \
   -d '{"subject":"smoke test","text":"hello from local dev","to":["a@example.com"]}'
+
+curl -s http://localhost:8787/v1/weather \
+  -H "Authorization: Bearer sk_local_localtest1234" \
+  -H "Content-Type: application/json" \
+  -d '{"location":"广州"}'
+# → 200 {"location":{...,"source":"geocode","name":"广州"},"weather":{...}}（open-meteo 免 key，本地 dev 即出真实数据）
 ```
 
 ## 配置
