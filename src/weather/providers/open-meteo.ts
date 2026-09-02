@@ -5,9 +5,11 @@ import type { GeoCandidate, WeatherForecastRequest, WeatherProvider } from "../t
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
 
-// current/daily 字段集是网关选定的固定集合（timezone=auto 由上游按坐标给当地时间）
+// current/hourly/daily 字段集是网关选定的固定集合（timezone=auto 由上游按坐标给当地时间）
 const CURRENT_FIELDS =
   "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m";
+const HOURLY_FIELDS =
+  "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m";
 const DAILY_FIELDS =
   "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max";
 
@@ -22,6 +24,7 @@ export const openMeteo: WeatherProvider = {
       latitude: String(req.latitude),
       longitude: String(req.longitude),
       current: CURRENT_FIELDS,
+      hourly: HOURLY_FIELDS,
       daily: DAILY_FIELDS,
       timezone: "auto",
       forecast_days: String(req.days),

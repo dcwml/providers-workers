@@ -16,7 +16,13 @@ afterEach(() => {
 
 describe("openMeteo.forecast", () => {
   it("GETs the forecast endpoint with the fixed field sets and passes the body through", async () => {
-    const upstream = { latitude: 23.09, longitude: 113.25, current: { temperature_2m: 30.2 }, daily: [] };
+    const upstream = {
+      latitude: 23.09,
+      longitude: 113.25,
+      current: { temperature_2m: 30.2 },
+      hourly: { temperature_2m: [27, 27.5] },
+      daily: [],
+    };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, upstream));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -31,6 +37,8 @@ describe("openMeteo.forecast", () => {
     expect(params.get("forecast_days")).toBe("5");
     expect(params.get("timezone")).toBe("auto");
     expect(params.get("current")).toContain("temperature_2m");
+    expect(params.get("hourly")).toContain("temperature_2m");
+    expect(params.get("hourly")).toContain("precipitation_probability");
     expect(params.get("daily")).toContain("temperature_2m_max");
     expect(init.method).toBeUndefined();
     expect(init.signal).toBe(signal);

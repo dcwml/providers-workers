@@ -1,6 +1,6 @@
 # /v1/weather 天气查询接口使用说明
 
-查天气不用先查坐标——四种方式任选其一告诉网关「查哪里」：**地名**、**地图分享链接**、**经纬度直传**，或什么都不传（按调用方 IP 自动定位）。底层为 open-meteo（免密钥匿名调用），实况 + 日预报。
+查天气不用先查坐标——四种方式任选其一告诉网关「查哪里」：**地名**、**地图分享链接**、**经纬度直传**，或什么都不传（按调用方 IP 自动定位）。底层为 open-meteo（免密钥匿名调用），实况 + 逐小时预报 + 日预报。
 
 - 生产域名：`https://api.oklapzlj.com`
 - 路径：`POST /v1/weather`（仅支持 POST，GET 及其它方法返回 404）
@@ -72,6 +72,18 @@ token 由管理员经 `/admin` 后台管理；token 需带有 `weather` scope（
       "wind_speed_10m": 5.9,
       "wind_direction_10m": 172
     },
+    "hourly": {
+      "time": ["2026-08-31T00:00", "2026-08-31T01:00", "2026-08-31T02:00"],
+      "temperature_2m": [27.8, 27.5, 27.1],
+      "relative_humidity_2m": [82, 84, 86],
+      "apparent_temperature": [31.2, 30.8, 30.3],
+      "is_day": [0, 0, 0],
+      "precipitation": [0, 0.1, 0.3],
+      "precipitation_probability": [10, 15, 22],
+      "weather_code": [3, 3, 61],
+      "wind_speed_10m": [8.2, 7.9, 9.4],
+      "wind_direction_10m": [168, 171, 175]
+    },
     "daily": {
       "time": ["2026-08-31", "2026-09-01", "2026-09-02"],
       "weather_code": [3, 61, 0],
@@ -86,7 +98,7 @@ token 由管理员经 `/admin` 后台管理；token 需带有 `weather` scope（
 ```
 
 - `location.source`：`geocode`（地名解析）/ `coords`（经纬度直传）/ `ip`（IP 定位）/ `baidu-link` / `amap-link`（地图链接换算）。`name`/`admin1`/`country` 仅 `geocode` 来源回填，其余来源只有坐标。
-- `weather` 为 open-meteo 上游响应原样透传：字段集固定为上表的 current/daily 项，`timezone=auto`（时间已按当地时区给出）；顶层 `latitude`/`longitude` 是上游网格吸附值，与请求坐标略有偏差属正常。
+- `weather` 为 open-meteo 上游响应原样透传：字段集固定为上表的 current/hourly/daily 项，`timezone=auto`（时间已按当地时区给出）；顶层 `latitude`/`longitude` 是上游网格吸附值，与请求坐标略有偏差属正常。`hourly` 各数组长度为 `24×days`（上例截取前 3 项）；另附 `current_units`/`hourly_units`/`daily_units` 单位说明对象。
 - `weather_code` 为 WMO 天气代码（0=晴，3=阴，61=小雨等），完整对照见 open-meteo 文档。
 
 ## 错误码速查
