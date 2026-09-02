@@ -1,5 +1,6 @@
 import { authorize, scopeAllowed, type ApiScope } from "./auth";
 import { ADMIN_PAGE_HTML } from "./admin-page";
+import README_MD from "../README.md";
 import { handleAdminApi } from "./admin";
 import { CHAT_PROVIDER_IDS, getChatProviderById } from "./chat/chains";
 import { runChat } from "./chat/runner";
@@ -781,6 +782,11 @@ export default {
     if (request.method === "GET" && url.pathname === "/admin") {
       return new Response(ADMIN_PAGE_HTML, {
         headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/README.md") {
+      return new Response(README_MD, {
+        headers: { "content-type": "text/markdown; charset=utf-8" },
       });
     }
     if (url.pathname.startsWith("/admin/api/")) return handleAdminApi(request, env);

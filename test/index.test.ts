@@ -1169,3 +1169,18 @@ describe("admin page routing", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("readme routing", () => {
+  it("serves README content for GET /README.md without auth", async () => {
+    const res = await handler.fetch(
+      new Request("https://gw.example/README.md"),
+      makeEnv(),
+      makeFakeCtx().ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/markdown");
+    const body = await res.text();
+    expect(body).toContain("# Providers");
+    expect(body).toContain("/v1/chat/completions");
+  });
+});

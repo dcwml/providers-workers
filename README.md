@@ -1,6 +1,6 @@
 # Providers
 
-Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + embeddings 接口 + rerank 接口 + 页面读取接口 + 邮件发送接口 + 天气查询接口，内置重试与供应商自动降级。
+Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + embeddings 接口 + rerank 接口 + 页面读取接口 + 搜索接口 + 邮件发送接口 + 天气查询接口，内置重试与供应商自动降级。
 
 ## 端点
 
@@ -14,6 +14,7 @@ Cloudflare Workers 上的多供应商聚合网关：OpenAI 兼容 chat 接口 + 
 | POST | `/v1/send-email` | 发送纯文本/HTML 邮件（无附件，`to`/`cc`/`bcc` 跨组去重）。供应商链固定：exmail → sendgrid；每家单次尝试 + 安全降级（投递状态未知时中止防重复发信）。 |
 | POST | `/v1/weather` | 天气查询（实况 + 1-16 天日预报）。位置输入四选一：地名（`"广州"`）/ 地图分享链接（百度、高德，自动换算坐标系）/ `latitude`+`longitude` 直传 / 缺省按调用方 IP 定位。响应 `{location, weather}` 信封。供应商：open-meteo（免 key，地理编码与预报均走它）。 |
 | GET | `/admin` | 管理后台（token 管理：新建/启停/删除/改接口权限，自动生成随机串）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`。 |
+| GET | `/README.md` | 项目说明文档（即本文件的 Markdown 原文，免鉴权）。 |
 
 业务端点要求 `Authorization: Bearer <token>`；token 由管理员在 `/admin` 后台创建与停用（存 D1，无需重新部署）。
 

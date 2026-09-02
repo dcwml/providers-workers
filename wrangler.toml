@@ -2,6 +2,11 @@ name = "providers-workers"
 main = "src/index.ts"
 compatibility_date = "2026-07-01"
 
+# 允许以文本形式 import .md 文件（如根目录 README.md，经 /README.md 端点暴露）
+rules = [
+  { type = "Text", globs = ["**/*.md"], fallthrough = true },
+]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "providers_db"

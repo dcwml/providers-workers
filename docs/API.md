@@ -17,6 +17,7 @@
 | POST | `/v1/search` | 网页搜索（`query` 必填，可选 `max_results` 1-10）。返回上游 JSON 信封，原样透传。供应商链固定：anysearch。 | [API-search.md](./API-search.md) |
 | POST | `/v1/weather` | 天气查询（实况 + 日预报）。位置支持地名 / 地图分享链接 / 经纬度直传 / IP 自动定位四种输入，响应为 `{location, weather}` 信封。供应商：open-meteo（免 key）。 | [API-weather.md](./API-weather.md) |
 | GET | `/admin` | 管理后台页面（token 管理）。数据接口 `/admin/api/*` 需 `ADMIN_TOKEN`，非业务端点。 | — |
+| GET | `/README.md` | 项目说明文档（Markdown 原文，免鉴权，非业务端点）。 | — |
 
 ## 通用约定
 
