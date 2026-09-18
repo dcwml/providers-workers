@@ -51,6 +51,12 @@ describe("sendgrid email provider", () => {
       from: { email: "provider@em8487.oklapzlj.com", name: "Provider" },
       subject: "Hi",
       content: [{ type: "text/html", value: "<p>Hello</p>" }],
+      tracking_settings: {
+        click_tracking: { enable: false },
+        open_tracking: { enable: false },
+        subscription_tracking: { enable: false },
+        ganalytics: { enable: false },
+      },
     });
   });
 

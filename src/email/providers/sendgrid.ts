@@ -34,6 +34,13 @@ export const sendgrid: EmailProvider = {
       content: [
         { type: mail.bodyKind === "html" ? "text/html" : "text/plain", value: mail.body },
       ],
+      // 禁用全部追踪：不改写链接（点击）、不上报打开、不注入退订/GA 参数
+      tracking_settings: {
+        click_tracking: { enable: false },
+        open_tracking: { enable: false },
+        subscription_tracking: { enable: false },
+        ganalytics: { enable: false },
+      },
     };
 
     let res: Response;
