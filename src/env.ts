@@ -8,6 +8,7 @@ export interface Env {
   DOTS_API_KEY?: string;
   ZHIPU_API_KEY?: string;
   SENSENOVA_API_KEY?: string;
+  INTERNAI_API_KEY?: string;
   JINA_API_KEY?: string;
   TAVILY_API_KEY?: string;
   FIRECRAWL_API_KEY?: string;

@@ -3,6 +3,7 @@ import { NonRetryableError, RetryableError } from "../../src/errors";
 import { deepseekOfficial } from "../../src/chat/providers/deepseek-official";
 import { dots } from "../../src/chat/providers/dots";
 import { gptsapi } from "../../src/chat/providers/gptsapi";
+import { internai } from "../../src/chat/providers/internai";
 import { openrouter } from "../../src/chat/providers/openrouter";
 import { sensenova } from "../../src/chat/providers/sensenova";
 import { siliconflow } from "../../src/chat/providers/siliconflow";
@@ -193,6 +194,63 @@ describe("gptsapi", () => {
   it("maps non-JSON response to RetryableError", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
     await expect(gptsapi.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+});
+
+describe("internai", () => {
+  const env: Env = { AUTH_TOKENS: "", INTERNAI_API_KEY: "ia-test" };
+
+  it("sends sanitized body with rewritten model to the internai endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: "r_internai", choices: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const req: ChatRequest = {
+      ...baseReq,
+      messages: [
+        { role: "system", content: "be brief" },
+        { role: "user", content: "hi" },
+      ],
+      response_format: { type: "json_schema", json_schema: { name: "s" } },
+      tools: [{ type: "function" }],
+    };
+
+    const res = await internai.chat(req, env, signal);
+
+    expect(res).toEqual({ id: "r_internai", choices: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://discovery-api.intern-ai.org.cn/v1/chat/completions");
+    const sent = JSON.parse(String(init.body));
+    expect(sent.model).toBe("deepseek-v4-flash-0731"); // 改写为上游 model
+    expect(sent.response_format).toEqual({ type: "json_schema", json_schema: { name: "s" } }); // jsonSchema 实测支持（probe 2026-10-19）→ 原样保留
+    expect(sent.tools).toEqual([{ type: "function" }]); // tools 支持 → 保留
+    expect(sent.messages).toEqual(req.messages); // systemPrompt 支持 → 原样保留
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer ia-test");
+  });
+
+  it("throws NonRetryableError when api key is not configured", async () => {
+    await expect(
+      internai.chat(baseReq, { AUTH_TOKENS: "" }, signal),
+    ).rejects.toThrow(NonRetryableError);
+  });
+
+  it("maps 429 to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(429, { error: "rate limited" })));
+    await expect(internai.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+
+  it("maps 400 to NonRetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(400, { error: "bad request" })));
+    await expect(internai.chat(baseReq, env, signal)).rejects.toThrow(NonRetryableError);
+  });
+
+  it("maps network failure to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    await expect(internai.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
+  });
+
+  it("maps non-JSON response to RetryableError", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json", { status: 200 })));
+    await expect(internai.chat(baseReq, env, signal)).rejects.toThrow(RetryableError);
   });
 });
 

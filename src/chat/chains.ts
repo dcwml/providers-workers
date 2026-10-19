@@ -3,6 +3,7 @@ import { agnes } from "./providers/agnes";
 import { deepseekOfficial } from "./providers/deepseek-official";
 import { dots } from "./providers/dots";
 import { gptsapi } from "./providers/gptsapi";
+import { internai } from "./providers/internai";
 import { openrouter } from "./providers/openrouter";
 import { sensenova } from "./providers/sensenova";
 import { siliconflow } from "./providers/siliconflow";
@@ -15,12 +16,13 @@ import { zhipu } from "./providers/zhipu";
 export const CHAINS: Record<string, readonly ChatProvider[]> = {
   // "sample-chat": [openrouter, deepseekOfficial, siliconflow],
   // "sample-reasoning": [deepseekOfficial, openrouter],
-  "agnes-2.0-flash": [agnes, dots, gptsapi, siliconflow, sensenova, zhipu],
-  "Qwen/Qwen3-8B": [siliconflow, agnes, dots, gptsapi, sensenova, zhipu],
-  "gpt-5.4-nano": [gptsapi, agnes, dots, siliconflow, sensenova, zhipu],
-  "glm-4.7-flash": [zhipu, agnes, dots, gptsapi, siliconflow, sensenova],
-  "sensenova-6.8-flash-lite": [sensenova, agnes, dots, gptsapi, siliconflow, zhipu],
-  "dots3-note-prev": [dots, agnes, gptsapi, siliconflow, sensenova, zhipu],
+  "agnes-2.0-flash": [agnes, dots, gptsapi, siliconflow, sensenova, zhipu, internai],
+  "deepseek-flash": [internai, agnes, dots, gptsapi, siliconflow, sensenova, zhipu],
+  "Qwen/Qwen3-8B": [siliconflow, agnes, dots, gptsapi, sensenova, zhipu, internai],
+  "gpt-5.4-nano": [gptsapi, agnes, dots, siliconflow, sensenova, zhipu, internai],
+  "glm-4.7-flash": [zhipu, agnes, dots, gptsapi, siliconflow, sensenova, internai],
+  "sensenova-6.8-flash-lite": [sensenova, agnes, dots, gptsapi, siliconflow, zhipu, internai],
+  "dots3-note-prev": [dots, agnes, gptsapi, siliconflow, sensenova, zhipu, internai],
 };
 
 /** 未注册的逻辑 model 统一回落到 agnes。 */

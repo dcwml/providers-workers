@@ -16,6 +16,7 @@ GPTSAPI_API_KEY=
 DOTS_API_KEY=
 ZHIPU_API_KEY=
 SENSENOVA_API_KEY=
+INTERNAI_API_KEY=
 
 # read 供应商（JINA_API_KEY 同时供 embeddings 供应商 jina 使用：上游模型 jina-embeddings-v5-omni-small）
 # FIRECRAWL_API_KEY 同时供 search 供应商 firecrawl 使用

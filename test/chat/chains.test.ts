@@ -6,20 +6,24 @@ describe("getChain", () => {
     expect(getChain("agnes-2.0-flash")).toBe(CHAINS["agnes-2.0-flash"]);
   });
 
+  it("maps deepseek-flash to the internai-first chain", () => {
+    expect(getChain("deepseek-flash").map((p) => p.id)).toEqual(["internai", "agnes", "dots", "gptsapi", "siliconflow", "sensenova", "zhipu"]);
+  });
+
   it("maps gpt-5.4-nano to the gptsapi-first fallback chain", () => {
-    expect(getChain("gpt-5.4-nano").map((p) => p.id)).toEqual(["gptsapi", "agnes", "dots", "siliconflow", "sensenova", "zhipu"]);
+    expect(getChain("gpt-5.4-nano").map((p) => p.id)).toEqual(["gptsapi", "agnes", "dots", "siliconflow", "sensenova", "zhipu", "internai"]);
   });
 
   it("maps glm-4.7-flash to the zhipu-first chain", () => {
-    expect(getChain("glm-4.7-flash").map((p) => p.id)).toEqual(["zhipu", "agnes", "dots", "gptsapi", "siliconflow", "sensenova"]);
+    expect(getChain("glm-4.7-flash").map((p) => p.id)).toEqual(["zhipu", "agnes", "dots", "gptsapi", "siliconflow", "sensenova", "internai"]);
   });
 
   it("maps sensenova-6.8-flash-lite to the sensenova-first chain", () => {
-    expect(getChain("sensenova-6.8-flash-lite").map((p) => p.id)).toEqual(["sensenova", "agnes", "dots", "gptsapi", "siliconflow", "zhipu"]);
+    expect(getChain("sensenova-6.8-flash-lite").map((p) => p.id)).toEqual(["sensenova", "agnes", "dots", "gptsapi", "siliconflow", "zhipu", "internai"]);
   });
 
   it("maps dots3-note-prev to the dots-first chain", () => {
-    expect(getChain("dots3-note-prev").map((p) => p.id)).toEqual(["dots", "agnes", "gptsapi", "siliconflow", "sensenova", "zhipu"]);
+    expect(getChain("dots3-note-prev").map((p) => p.id)).toEqual(["dots", "agnes", "gptsapi", "siliconflow", "sensenova", "zhipu", "internai"]);
   });
 
   it("falls back to the agnes chain for unknown models", () => {

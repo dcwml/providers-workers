@@ -104,6 +104,7 @@ curl -s http://localhost:8787/v1/weather \
 | `DOTS_API_KEY` | chat 供应商 dots（上游模型 dots3-note-prev，AskDianDian） |
 | `ZHIPU_API_KEY` | chat 供应商 zhipu（上游模型 glm-4.7-flash） |
 | `SENSENOVA_API_KEY` | chat 供应商 sensenova（上游模型 glm-5.2，商汤托管；逻辑链键名保留 sensenova-6.8-flash-lite） |
+| `INTERNAI_API_KEY` | chat 供应商 internai（discovery-api.intern-ai.org.cn，上游模型 deepseek-v4-flash-0731；逻辑模型 deepseek-flash） |
 | `JINA_API_KEY` | read 供应商 jina + embeddings 供应商 jina（上游模型 jina-embeddings-v5-omni-small）共用 |
 | `TAVILY_API_KEY` | read 供应商 tavily |
 | `FIRECRAWL_API_KEY` | read 供应商 firecrawl + search 供应商 firecrawl 共用 |
